@@ -18,24 +18,36 @@ join_array_tuple_comma () {
     printf -v joined '(%s),' $arr
     echo "[${joined%,}]"
 }
+
 # Check if juliaup exists in environment
 check_if_juliaup () {
-    if [ command -v juliaup ] &> /dev/null || [ ! $JULIAUP ]
-    then # juliaup does not exist or $JULIAUP is false
-        return 1
-    else # run with juliaup
+    if command -v juliaup &> /dev/null
+    then # juliaup exists
         return 0
+    else # juliaup does not exist
+        return 1
     fi
 }
+
 # Grep current julia version
 julia_version () {
     julia_v=($(julia -v))
     echo "${julia_v[2]}"
 }
+
 # Get current WaterLily version
 waterlily_version () {
     waterlily_v=($(git -C $WATERLILY_DIR rev-parse --short HEAD))
     echo "${waterlily_v}"
+}
+
+# Julia command based on juliaup or not
+julia_cmd () {
+    if [[ check_if_juliaup && DEFAULT_VERSION -eq 1 ]]; then
+        julia +$version "${full_args[@]}"
+    else
+        julia "${full_args[@]}"
+    fi
 }
 
 # Update project environment with new Julia version: Mark WaterLily as a development packag, then update dependencies and precompile.
@@ -46,21 +58,15 @@ update_environment () {
         git checkout $wl_version
         cd $THIS_DIR
     fi
-    if check_if_juliaup; then
-        echo "Updating environment to Julia $version and compiling WaterLily"
-        julia +${version} --project=$THIS_DIR -e "using Pkg; Pkg.develop(PackageSpec(path=get(ENV, \"WATERLILY_DIR\", \"\"))); Pkg.update();"
-    fi
+    echo "Updating environment to Julia $version and compiling WaterLily"
+    full_args=(--project=$THIS_DIR -e "using Pkg; Pkg.develop(PackageSpec(path=get(ENV, \"WATERLILY_DIR\", \"\"))); Pkg.update();")
+    julia_cmd
 }
 
 run_benchmark () {
-    if check_if_juliaup; then
-        full_args=(+${version} --project=${THIS_DIR} --startup-file=no $args)
-    else
-        full_args=(--project=${THIS_DIR} --startup-file=no $args)
-    fi
-
+    full_args=(--project=${THIS_DIR} --startup-file=no $args)
     echo "Running: julia ${full_args[@]}"
-    julia "${full_args[@]}"
+    julia_cmd
 }
 
 # Print benchamrks info
@@ -82,8 +88,9 @@ display_info () {
 }
 
 # Default backends
-JULIAUP=true
 JULIA_USER_VERSION=$(julia_version)
+VERSIONS=()
+DEFAULT_VERSION=0
 WL_DIR=""
 WL_VERSIONS=()
 BACKENDS=('Array' 'CuArray')
@@ -97,10 +104,6 @@ FTYPE=('Float32' 'Float32')
 # Parse arguments
 while [ $# -gt 0 ]; do
 case "$1" in
-    --juliaup|-ju)
-    JULIAUP=($2)
-    shift
-    ;;
     --waterlily_dir|-wd)
     WL_DIR=($2)
     shift
@@ -189,6 +192,17 @@ else
     WL_VERSIONS=($(waterlily_version))
 fi
 
+# Check if Julia versions have been specified, and if so check that juliaup is installed
+if (( ${#VERSIONS[@]} != 0 )); then
+    if ! check_if_juliaup; then
+        printf "Versions ${WL_VERSIONS[@]} were requested, but juliaup is not found."
+        exit 1
+    fi
+    DEFAULT_VERSION=1
+else
+    VERSIONS=($JULIA_USER_VERSION)
+fi
+
 # Display information
 display_info
 
@@ -201,11 +215,7 @@ args_cases="--cases=$CASES --log2p=$LOG2P --max_steps=$MAXSTEPS --ftype=$FTYPE"
 
 # Benchmarks
 for version in "${VERSIONS[@]}" ; do
-    if check_if_juliaup; then
-        echo "Julia $version benchmarks"
-    else
-        echo "Running with default Julia version $( julia_version ) from $( which julia )"
-    fi
+    echo "Running with Julia version $version from $( which julia )"
     for wl_version in "${WL_VERSIONS[@]}" ; do
         update_environment
         for backend in "${BACKENDS[@]}" ; do
@@ -220,9 +230,6 @@ for version in "${VERSIONS[@]}" ; do
             fi
         done
     done
-    if ! check_if_juliaup; then
-        break
-    fi # if no juliaup, we only test default Julia version
 done
 
 echo "All done!"
