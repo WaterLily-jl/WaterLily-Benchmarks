@@ -20,11 +20,11 @@ join_array_tuple_comma () {
 }
 # Check if juliaup exists in environment
 check_if_juliaup () {
-    if [ command -v juliaup ] &> /dev/null || [ ! $JULIAUP ]
-    then # juliaup does not exist or $JULIAUP is false
-        return 1
-    else # run with juliaup
+    if command -v juliaup &> /dev/null
+    then # juliaup exists
         return 0
+    else # juliaup does not exist
+        return 1
     fi
 }
 # Grep current julia version
@@ -46,19 +46,12 @@ update_environment () {
         git checkout $wl_version
         cd $THIS_DIR
     fi
-    if check_if_juliaup; then
-        echo "Updating environment to Julia $version and compiling WaterLily"
-        julia +${version} --project=$THIS_DIR -e "using Pkg; Pkg.develop(PackageSpec(path=get(ENV, \"WATERLILY_DIR\", \"\"))); Pkg.update();"
-    fi
+    echo "Updating environment to Julia $version and compiling WaterLily"
+    julia --project=$THIS_DIR -e "using Pkg; Pkg.develop(PackageSpec(path=get(ENV, \"WATERLILY_DIR\", \"\"))); Pkg.update();"
 }
 
 run_benchmark () {
-    if check_if_juliaup; then
-        full_args=(+${version} --project=${THIS_DIR} --startup-file=no $args)
-    else
-        full_args=(--project=${THIS_DIR} --startup-file=no $args)
-    fi
-
+    full_args=(--project=${THIS_DIR} --startup-file=no $args)
     echo "Running: julia ${full_args[@]}"
     julia "${full_args[@]}"
 }
@@ -82,8 +75,8 @@ display_info () {
 }
 
 # Default backends
-JULIAUP=true
 JULIA_USER_VERSION=$(julia_version)
+VERSIONS=()
 WL_DIR=""
 WL_VERSIONS=()
 BACKENDS=('Array' 'CuArray')
@@ -97,10 +90,6 @@ FTYPE=('Float32' 'Float32')
 # Parse arguments
 while [ $# -gt 0 ]; do
 case "$1" in
-    --juliaup|-ju)
-    JULIAUP=($2)
-    shift
-    ;;
     --waterlily_dir|-wd)
     WL_DIR=($2)
     shift
@@ -189,6 +178,15 @@ else
     WL_VERSIONS=($(waterlily_version))
 fi
 
+# Check if Julia versions have been specified, and if so that juliaup is installed
+if (( ${#VERSIONS[@]} != 0 )); then
+    if ! check_if_juliaup; then
+        printf "Versions ${WL_VERSIONS[@]} where requested, but juliaup is not found."
+    fi
+else
+    VERSIONS=($JULIA_USER_VERSION)
+fi
+
 # Display information
 display_info
 
@@ -201,10 +199,9 @@ args_cases="--cases=$CASES --log2p=$LOG2P --max_steps=$MAXSTEPS --ftype=$FTYPE"
 
 # Benchmarks
 for version in "${VERSIONS[@]}" ; do
+    echo "Running with Julia version $version from $( which julia )"
     if check_if_juliaup; then
-        echo "Julia $version benchmarks"
-    else
-        echo "Running with default Julia version $( julia_version ) from $( which julia )"
+        alias julia="julia +$version"
     fi
     for wl_version in "${WL_VERSIONS[@]}" ; do
         update_environment
@@ -220,9 +217,6 @@ for version in "${VERSIONS[@]}" ; do
             fi
         done
     done
-    if ! check_if_juliaup; then
-        break
-    fi # if no juliaup, we only test default Julia version
 done
 
 echo "All done!"

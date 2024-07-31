@@ -8,10 +8,20 @@ include("util.jl")
 # Parse CLA and load benchmarks
 sort_idx = !isnothing(iarg("sort", ARGS)) ? arg_value("sort", ARGS) |> metaparse : 0
 plotdir = !isnothing(iarg("plotdir", ARGS)) ? arg_value("plotdir", ARGS) : nothing
-datadir = !isnothing(iarg("datadir", ARGS)) ? arg_value("datadir", ARGS) : false
-patterns = !isnothing(iarg("patterns", ARGS)) ? arg_value("patterns", ARGS) |> parsepatterns |> metaparse : String["tgv", "sphere", "cylinder"]
-!isa(datadir, String) && !isnothing(iarg("cases", ARGS)) && @error "Data directory needed if --cases are passed as command line argument."
-benchmarks_list = isa(datadir, AbstractString) ? rdir(datadir, patterns) : [f for f in ARGS if !any(occursin.(["--sort","--datadir","--plotdir"], f))]
+datadir = !isnothing(iarg("datadir", ARGS)) ? arg_value("datadir", ARGS) : "data"
+patterns = !isnothing(iarg("patterns", ARGS)) ? arg_value("patterns", ARGS) |> parsepatterns |> metaparse : String["tgv", "jelly"]
+benchmarks_list = nothing
+if isnothing(iarg("datadir", ARGS)) && any(split(x, '.')[end] == "json" for x in ARGS)  # passed json files directly
+    benchmarks_list = [f for f in ARGS if !any(occursin.(["--sort","--datadir","--plotdir"], f))]
+elseif !any(split(x, '.')[end] == "json" for x in ARGS) # no json files passed, we rely on --datadir
+    if ispath(datadir)
+        benchmarks_list = rdir(datadir, patterns)
+    else
+        @error "--datadir=$(datadir) is not a real path."
+    end
+else
+    @error "Cannot pass both --datadir=$(datadir) and json files."
+end
 println("Processing the following benchmarks:")
 for f in benchmarks_list
     println("    ", f)
