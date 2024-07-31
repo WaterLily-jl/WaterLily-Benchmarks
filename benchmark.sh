@@ -178,10 +178,10 @@ else
     WL_VERSIONS=($(waterlily_version))
 fi
 
-# Check if Julia versions have been specified, and if so that juliaup is installed
+# Check if Julia versions have been specified, and if so check that juliaup is installed
 if (( ${#VERSIONS[@]} != 0 )); then
     if ! check_if_juliaup; then
-        printf "Versions ${WL_VERSIONS[@]} where requested, but juliaup is not found."
+        printf "Versions ${WL_VERSIONS[@]} were requested, but juliaup is not found."
     fi
 else
     VERSIONS=($JULIA_USER_VERSION)
