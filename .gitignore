@@ -1,0 +1,5 @@
+.vscode/
+Manifest.toml
+*.pdf
+*.json
+
