@@ -3,7 +3,13 @@
 Suite to generate benchmarks across different WaterLily versions, Julia versions (using [**juliaup**](https://github.com/JuliaLang/juliaup)), backends, cases, and cases sizes using the [benchmark.sh](./benchmark.sh) script.
 
 ## TL;DR
-Usage example
+Default benchmark for quick validations on the TGV and Jelly test cases.
+```sh
+sh benchmark.sh
+julia --project compare.jl
+```
+
+More detailed usage example
 ```sh
 sh benchmark.sh -v "release 1.11" -t "1 4" -b "Array CuArray" -c "tgv jelly" -p "6,7 5,6" -s "100 100" -ft "Float32 Float64"
 julia --project compare.jl --datadir="data" --plotdir="plots" --patterns=["tgv","jelly"] --sort=1
@@ -11,7 +17,7 @@ julia --project compare.jl --datadir="data" --plotdir="plots" --patterns=["tgv",
 runs both the TGV and jelly benchmarks (`-c`) at the current WaterLily available in `$WATERLILT_DIR` state in 2 different Julia versions (latest release version and latest 1.11, noting that these need to be available in juliaup), and 3 different backends (CPUx01, CPUx04, CUDA). Note that `$WATERLILT_DIR` needs to be available in the environmental variables, or otherwise the argument `-wd "my/waterlily/dir"` can be specified. The cases size `-p`, number of time steps `-s`, and float type `-ft` are bash (ordered) arrays which need to be equally sized to `-c` and specify each benchmark case (respectively).
 The default benchmarks launch (`sh benchmark.sh`) is equivalent to:
 ```sh
-sh benchmark.sh -wd "$WATERLILY_DIR" -w "" -ju true -v release -t "1 4" -b "Array CuArray" -c "tgv jelly" -p "6,7 5,6" -s "100 100" -ft "Float32 Float32"
+sh benchmark.sh -wd "$WATERLILY_DIR" -w "" -v "release" -t "4" -b "Array CuArray" -c "tgv jelly" -p "6,7 5,6" -s "100 100" -ft "Float32 Float32"
 ```
 Note that `-w` or `--waterlily` can be used to pass different WaterLily versions by using commit hashes, tags, or branch names, eg. `-w "master v1.2.0"`. An empty `-w` argument will benchmark the current state of `$WATERLILY_DIR`.
 
