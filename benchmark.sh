@@ -216,10 +216,6 @@ args_cases="--cases=$CASES --log2p=$LOG2P --max_steps=$MAXSTEPS --ftype=$FTYPE"
 # Benchmarks
 for version in "${VERSIONS[@]}" ; do
     echo "Running with Julia version $version from $( which julia )"
-    # if [[ check_if_juliaup && DEFAULT_VERSION -eq 1 ]]; then
-    #     printf "ALIASING JULIA NOW!"
-    #     alias julia="julia +$version"
-    # fi
     for wl_version in "${WL_VERSIONS[@]}" ; do
         update_environment
         for backend in "${BACKENDS[@]}" ; do
