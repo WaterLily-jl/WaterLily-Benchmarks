@@ -94,7 +94,7 @@ DEFAULT_VERSION=0
 WL_DIR=""
 WL_VERSIONS=()
 BACKENDS=('Array' 'CuArray')
-THREADS=('1' '4')
+THREADS=('4')
 # Default cases. Arrays below must be same length (specify each case individually)
 CASES=('tgv' 'jelly')
 LOG2P=('6,7' '5,6')
