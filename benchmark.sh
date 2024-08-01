@@ -50,14 +50,26 @@ julia_cmd () {
     fi
 }
 
-# Update project environment with new Julia version: Mark WaterLily as a development packag, then update dependencies and precompile.
-update_environment () {
+git_checkout () {
     if $WATERLILY_CHECKOUT; then
         echo "Git checkout to WaterLily $wl_version"
         cd $WATERLILY_DIR
         git checkout $wl_version
         cd $THIS_DIR
     fi
+}
+
+local_preferences () {
+    if [[ $backend == "Array" && $thread == 1 ]]; then
+        printf "[WaterLily]\nbackend = \"SIMD\"" > LocalPreferences.toml
+    else
+        printf "[WaterLily]\nbackend = \"KernelAbstractions\"" > LocalPreferences.toml
+    fi
+}
+
+# Update project environment with new Julia version: Mark WaterLily as a development packag, then update dependencies and precompile.
+update_environment () {
+    local_preferences
     echo "Updating environment to Julia $version and compiling WaterLily"
     full_args=(--project=$THIS_DIR -e "using Pkg; Pkg.develop(PackageSpec(path=get(ENV, \"WATERLILY_DIR\", \"\"))); Pkg.update();")
     julia_cmd
@@ -217,15 +229,17 @@ args_cases="--cases=$CASES --log2p=$LOG2P --max_steps=$MAXSTEPS --ftype=$FTYPE"
 for version in "${VERSIONS[@]}" ; do
     echo "Running with Julia version $version from $( which julia )"
     for wl_version in "${WL_VERSIONS[@]}" ; do
-        update_environment
+        git_checkout
         for backend in "${BACKENDS[@]}" ; do
             if [ "${backend}" == "Array" ]; then
                 for thread in "${THREADS[@]}" ; do
                     args="-t $thread ${THIS_DIR}/benchmark.jl --backend=$backend $args_cases"
+                    update_environment
                     run_benchmark
                 done
             else
                 args="${THIS_DIR}/benchmark.jl --backend=$backend $args_cases"
+                update_environment
                 run_benchmark
             fi
         done
