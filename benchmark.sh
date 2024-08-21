@@ -87,6 +87,7 @@ display_info () {
     echo "Running benchmark tests for:
  - WaterLily:     ${WL_VERSIONS[@]}
  - WaterLily dir: $WATERLILY_DIR
+ - Benchmark dir: $DATA_DIR
  - Julia:         ${VERSIONS[@]}
  - Backends:      ${BACKENDS[@]}"
     if [[ " ${BACKENDS[*]} " =~ [[:space:]]'Array'[[:space:]] ]]; then
@@ -104,6 +105,7 @@ JULIA_USER_VERSION=$(julia_version)
 VERSIONS=()
 DEFAULT_VERSION=0
 WL_DIR=""
+DATA_DIR="data/"
 WL_VERSIONS=()
 BACKENDS=('Array' 'CuArray')
 THREADS=('4')
@@ -150,6 +152,10 @@ case "$1" in
     ;;
     --float_type|-ft)
     FTYPE=($2)
+    shift
+    ;;
+    --data_dir|-dd)
+    DATA_DIR=($2)
     shift
     ;;
     *)
@@ -223,7 +229,7 @@ CASES=$(join_array_str_comma "${CASES[*]}")
 LOG2P=$(join_array_tuple_comma "${LOG2P[*]}")
 MAXSTEPS=$(join_array_comma "${MAXSTEPS[*]}")
 FTYPE=$(join_array_comma "${FTYPE[*]}")
-args_cases="--cases=$CASES --log2p=$LOG2P --max_steps=$MAXSTEPS --ftype=$FTYPE"
+args_cases="--cases=$CASES --log2p=$LOG2P --max_steps=$MAXSTEPS --ftype=$FTYPE --data_dir=$DATA_DIR"
 
 # Benchmarks
 for version in "${VERSIONS[@]}" ; do

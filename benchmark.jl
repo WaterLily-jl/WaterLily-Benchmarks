@@ -78,11 +78,10 @@ function run_benchmarks(cases, log2p, max_steps, ftype, backend, bstr; datadir="
     end
 end
 
-cases, log2p, max_steps, ftype, backend = parse_cla(ARGS;
-    cases=["tgv", "jelly"], log2p=[(6,7), (5,6)], max_steps=[100, 100], ftype=[Float32, Float32], backend=Array
+cases, log2p, max_steps, ftype, backend, datadir = parse_cla(ARGS;
+    cases=["tgv", "jelly"], log2p=[(6,7), (5,6)], max_steps=[100, 100], ftype=[Float32, Float32], backend=Array, datadir="data/"
 )
 
 # Generate benchmark data
-datadir = joinpath("data", git_hash)
 mkpath(datadir)
 run_benchmarks(cases, log2p, max_steps, ftype, backend, backend_str[backend]; datadir)

@@ -28,7 +28,7 @@ julia --project compare.jl --plotdir="plots" $(find data/ \( -name "tgv*json" -o
 
 ## Usage information
 The accepted command line arguments are (parenthesis for short version):
- - Backend arguments: `--waterlily(-w)`, `--waterlily_dir(-wd)`, `--juliaup(-ju)`, `--versions(-v)`, `--backends(-b)`, `--threads(-t)`. Respectively: List of WaterLily git hashes/tags/branches to test, WaterLily.jl directory, usage of juliaup or not (`true` by default, but use `false` to run with default Julia in system), Julia version, backend types, number of threads (when `--backends` contains `Array`). The latter 3 arguments accept a list of different parameters, for example:
+ - Backend arguments: `--waterlily(-w)`, `--waterlily_dir(-wd)`, `--data_dir(-dd)`, `--versions(-v)`, `--backends(-b)`, `--threads(-t)`. Respectively: List of WaterLily git hashes/tags/branches to test, WaterLily.jl directory, path to store the benchmark data, Julia version, backend types, number of threads (when `--backends` contains `Array`). The latter 3 arguments accept a list of different parameters, for example:
     ```sh
     -w "fae590d e22ad41" -v "1.8.5 1.9.4" -b "Array CuArray" -t "1 6"
     ```
