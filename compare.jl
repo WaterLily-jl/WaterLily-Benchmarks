@@ -7,20 +7,20 @@ include("util.jl")
 
 # Parse CLA and load benchmarks
 sort_idx = !isnothing(iarg("sort", ARGS)) ? arg_value("sort", ARGS) |> metaparse : 0
-plotdir = !isnothing(iarg("plotdir", ARGS)) ? arg_value("plotdir", ARGS) : nothing
-datadir = !isnothing(iarg("datadir", ARGS)) ? arg_value("datadir", ARGS) : "data"
+plot_dir = !isnothing(iarg("plot_dir", ARGS)) ? arg_value("plot_dir", ARGS) : nothing
+data_dir = !isnothing(iarg("data_dir", ARGS)) ? arg_value("data_dir", ARGS) : "data"
 patterns = !isnothing(iarg("patterns", ARGS)) ? arg_value("patterns", ARGS) |> parsepatterns |> metaparse : String["tgv", "jelly"]
 benchmarks_list = nothing
-if isnothing(iarg("datadir", ARGS)) && any(split(x, '.')[end] == "json" for x in ARGS)  # passed json files directly
-    benchmarks_list = [f for f in ARGS if !any(occursin.(["--sort","--datadir","--plotdir"], f))]
-elseif !any(split(x, '.')[end] == "json" for x in ARGS) # no json files passed, we rely on --datadir
-    if ispath(datadir)
-        benchmarks_list = rdir(datadir, patterns)
+if isnothing(iarg("data_dir", ARGS)) && any(split(x, '.')[end] == "json" for x in ARGS)  # passed json files directly
+    benchmarks_list = [f for f in ARGS if !any(occursin.(["--sort","--data_dir","--plot_dir"], f))]
+elseif !any(split(x, '.')[end] == "json" for x in ARGS) # no json files passed, we rely on --data_dir
+    if ispath(data_dir)
+        benchmarks_list = rdir(data_dir, patterns)
     else
-        @error "--datadir=$(datadir) is not a real path."
+        @error "--data_dir=$(data_dir) is not a real path."
     end
 else
-    @error "Cannot pass both --datadir=$(datadir) and json files."
+    @error "Cannot pass both --data_dir=$(data_dir) and json files."
 end
 println("Processing the following benchmarks:")
 for f in benchmarks_list
@@ -39,7 +39,7 @@ for b in benchmarks_all
 end
 
 # Table and plots
-!isa(plotdir, Nothing) &&  mkpath(plotdir)
+!isa(plot_dir, Nothing) &&  mkpath(plot_dir)
 for (i, case) in enumerate(cases_ordered)
     benchmarks = benchmarks_all_dict[case]
     # Get backends string vector and assert same case sizes for the different backends
@@ -84,7 +84,7 @@ for (i, case) in enumerate(cases_ordered)
     end
 
     # Plotting each configuration of WaterLily version, Julia version and precision in benchamarks
-    if !isa(plotdir, Nothing)
+    if !isa(plot_dir, Nothing)
         # Get cases size
         N = prod(tests_dets[case]["size"]) .* 2 .^ (3 .* eval(Meta.parse.(log2p_str)))
         N_str = (N./1e6) .|> x -> @sprintf("%.2f", x)
@@ -104,7 +104,7 @@ for (i, case) in enumerate(cases_ordered)
                 ylabel="Cost [ns/DOF/dt]", title=tests_dets[case]["title"], legend=:bottomleft
             )
             fancylogscale!(p_cost)
-            savefig(p_cost, joinpath(string(@__DIR__), plotdir, "$(case)_cost_$(versions_key).pdf"))
+            savefig(p_cost, joinpath(string(@__DIR__), plot_dir, "$(case)_cost_$(versions_key).pdf"))
 
             # Speedup plot
             groups = repeat(N_str, inner=length(unique_backends_str)) |> CategoricalArray
@@ -120,7 +120,7 @@ for (i, case) in enumerate(cases_ordered)
                 )...
             )
             plot!(p, ylabel="Time [s]", legend=:topleft, left_margin=Plots.Measures.Length(:mm, 0))
-            savefig(p, joinpath(string(@__DIR__), plotdir, "$(case)_benchmark_$(versions_key).pdf"))
+            savefig(p, joinpath(string(@__DIR__), plot_dir, "$(case)_benchmark_$(versions_key).pdf"))
         end
     end
 end

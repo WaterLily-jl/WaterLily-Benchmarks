@@ -64,7 +64,7 @@ function jelly(p, backend; Re=5e2, U=1, T=Float32)
 end
 
 # Generate benchmarks
-function run_benchmarks(cases, log2p, max_steps, ftype, backend, bstr; datadir="./")
+function run_benchmarks(cases, log2p, max_steps, ftype, backend, bstr; data_dir="./")
     for (case, p, s, ft) in zip(cases, log2p, max_steps, ftype)
         println("Benchmarking: $(case)")
         suite = BenchmarkGroup()
@@ -74,14 +74,14 @@ function run_benchmarks(cases, log2p, max_steps, ftype, backend, bstr; datadir="
         ) # create benchmark
         results[bstr] = run(suite[bstr], samples=1, evals=1, seconds=1e6, verbose=true) # run!
         fname = "$(case)_$(p...)_$(s)_$(ft)_$(bstr)_$(git_hash)_$VERSION.json"
-        BenchmarkTools.save(joinpath(datadir,fname), results)
+        BenchmarkTools.save(joinpath(data_dir,fname), results)
     end
 end
 
-cases, log2p, max_steps, ftype, backend, datadir = parse_cla(ARGS;
-    cases=["tgv", "jelly"], log2p=[(6,7), (5,6)], max_steps=[100, 100], ftype=[Float32, Float32], backend=Array, datadir="data/"
+cases, log2p, max_steps, ftype, backend, data_dir = parse_cla(ARGS;
+    cases=["tgv", "jelly"], log2p=[(6,7), (5,6)], max_steps=[100, 100], ftype=[Float32, Float32], backend=Array, data_dir="data/"
 )
 
 # Generate benchmark data
-mkpath(datadir)
-run_benchmarks(cases, log2p, max_steps, ftype, backend, backend_str[backend]; datadir)
+mkpath(data_dir)
+run_benchmarks(cases, log2p, max_steps, ftype, backend, backend_str[backend]; data_dir)

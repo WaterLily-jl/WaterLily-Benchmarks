@@ -5,14 +5,14 @@ arg_value(arg, args) = split(args[iarg(arg, args)], "=")[end]
 metaparse(x) = eval(Meta.parse(x))
 parsepatterns(x) = replace(x,","=>("\",\""),"["=>("[\""),"]"=>("\"]"))
 
-function parse_cla(args; cases=["tgv"], log2p=[(6,7)], max_steps=[100], ftype=[Float32], backend=Array, datadir="data/")
+function parse_cla(args; cases=["tgv"], log2p=[(6,7)], max_steps=[100], ftype=[Float32], backend=Array, data_dir="data/")
     cases = !isnothing(iarg("cases", args)) ? arg_value("cases", args) |> metaparse : cases
     log2p = !isnothing(iarg("log2p", args)) ? arg_value("log2p", args) |> metaparse : log2p
     max_steps = !isnothing(iarg("max_steps", args)) ? arg_value("max_steps", args) |> metaparse : max_steps
     ftype = !isnothing(iarg("ftype", args)) ? arg_value("ftype", args) |> metaparse : ftype
     backend = !isnothing(iarg("backend", args)) ? arg_value("backend", args) |> x -> eval(Symbol(x)) : backend
-    datadir = !isnothing(iarg("data_dir", args)) ? arg_value("data_dir", args) : datadir
-    return cases, log2p, max_steps, ftype, backend, datadir
+    data_dir = !isnothing(iarg("data_dir", args)) ? arg_value("data_dir", args) : data_dir
+    return cases, log2p, max_steps, ftype, backend, data_dir
 end
 
 macro add_benchmark(args...)
