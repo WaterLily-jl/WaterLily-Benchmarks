@@ -50,14 +50,26 @@ julia_cmd () {
     fi
 }
 
-# Update project environment with new Julia version: Mark WaterLily as a development packag, then update dependencies and precompile.
-update_environment () {
+git_checkout () {
     if $WATERLILY_CHECKOUT; then
         echo "Git checkout to WaterLily $wl_version"
         cd $WATERLILY_DIR
         git checkout $wl_version
         cd $THIS_DIR
     fi
+}
+
+local_preferences () {
+    if [[ $backend == "Array" && $thread == 1 ]]; then
+        printf "[WaterLily]\nbackend = \"SIMD\"" > LocalPreferences.toml
+    else
+        printf "[WaterLily]\nbackend = \"KernelAbstractions\"" > LocalPreferences.toml
+    fi
+}
+
+# Update project environment with new Julia version: Mark WaterLily as a development packag, then update dependencies and precompile.
+update_environment () {
+    local_preferences
     echo "Updating environment to Julia $version and compiling WaterLily"
     full_args=(--project=$THIS_DIR -e "using Pkg; Pkg.develop(PackageSpec(path=get(ENV, \"WATERLILY_DIR\", \"\"))); Pkg.update();")
     julia_cmd
@@ -75,6 +87,7 @@ display_info () {
     echo "Running benchmark tests for:
  - WaterLily:     ${WL_VERSIONS[@]}
  - WaterLily dir: $WATERLILY_DIR
+ - Benchmark dir: $DATA_DIR
  - Julia:         ${VERSIONS[@]}
  - Backends:      ${BACKENDS[@]}"
     if [[ " ${BACKENDS[*]} " =~ [[:space:]]'Array'[[:space:]] ]]; then
@@ -92,6 +105,7 @@ JULIA_USER_VERSION=$(julia_version)
 VERSIONS=()
 DEFAULT_VERSION=0
 WL_DIR=""
+DATA_DIR="data/"
 WL_VERSIONS=()
 BACKENDS=('Array' 'CuArray')
 THREADS=('4')
@@ -138,6 +152,10 @@ case "$1" in
     ;;
     --float_type|-ft)
     FTYPE=($2)
+    shift
+    ;;
+    --data_dir|-dd)
+    DATA_DIR=($2)
     shift
     ;;
     *)
@@ -211,21 +229,23 @@ CASES=$(join_array_str_comma "${CASES[*]}")
 LOG2P=$(join_array_tuple_comma "${LOG2P[*]}")
 MAXSTEPS=$(join_array_comma "${MAXSTEPS[*]}")
 FTYPE=$(join_array_comma "${FTYPE[*]}")
-args_cases="--cases=$CASES --log2p=$LOG2P --max_steps=$MAXSTEPS --ftype=$FTYPE"
+args_cases="--cases=$CASES --log2p=$LOG2P --max_steps=$MAXSTEPS --ftype=$FTYPE --data_dir=$DATA_DIR"
 
 # Benchmarks
 for version in "${VERSIONS[@]}" ; do
     echo "Running with Julia version $version from $( which julia )"
     for wl_version in "${WL_VERSIONS[@]}" ; do
-        update_environment
+        git_checkout
         for backend in "${BACKENDS[@]}" ; do
             if [ "${backend}" == "Array" ]; then
                 for thread in "${THREADS[@]}" ; do
                     args="-t $thread ${THIS_DIR}/benchmark.jl --backend=$backend $args_cases"
+                    update_environment
                     run_benchmark
                 done
             else
                 args="${THIS_DIR}/benchmark.jl --backend=$backend $args_cases"
+                update_environment
                 run_benchmark
             fi
         done
