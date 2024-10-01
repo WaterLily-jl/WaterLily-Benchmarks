@@ -14,7 +14,7 @@ More detailed usage example
 sh benchmark.sh -v "release 1.11" -t "1 4" -b "Array CuArray" -c "tgv jelly" -p "6,7 5,6" -s "100 100" -ft "Float32 Float64"
 julia --project compare.jl --data_dir="data" --plot_dir="plots" --patterns=["tgv","jelly"] --sort=1
 ```
-runs both the TGV and jelly benchmarks (`-c`) at the current WaterLily available in `$WATERLILT_DIR` state in 2 different Julia versions (latest release version and latest 1.11, noting that these need to be available in juliaup), and 3 different backends (CPUx01, CPUx04, CUDA). Note that `$WATERLILT_DIR` needs to be available in the environmental variables, or otherwise the argument `-wd "my/waterlily/dir"` can be specified. The cases size `-p`, number of time steps `-s`, and float type `-ft` are bash (ordered) arrays which need to be equally sized to `-c` and specify each benchmark case (respectively).
+runs both the TGV and jelly benchmarks (`-c`) at the current WaterLily available in `$WATERLILY_DIR` state in 2 different Julia versions (latest release version and latest 1.11, noting that these need to be available in juliaup), and 3 different backends (CPUx01, CPUx04, CUDA). Note that `$WATERLILY_DIR` needs to be available in the environmental variables, or otherwise the argument `-wd "my/waterlily/dir"` can be specified. The cases size `-p`, number of time steps `-s`, and float type `-ft` are bash (ordered) arrays which need to be equally sized to `-c` and specify each benchmark case (respectively).
 The default benchmarks launch (`sh benchmark.sh`) is equivalent to:
 ```sh
 sh benchmark.sh -wd "$WATERLILY_DIR" -w "" -v "release" -t "4" -b "Array CuArray" -c "tgv jelly" -p "6,7 5,6" -s "100 100" -ft "Float32 Float32"
