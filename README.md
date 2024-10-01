@@ -9,6 +9,8 @@ sh benchmark.sh
 julia --project compare.jl
 ```
 
+> **_NOTE:_** For Ubunutu users: The default shell (`/bin/sh`) in Ubuntu points to `dash`, and not `bash`. Executing the `sh benchmark.sh` calls `dash`  and results in a `[Bad Substitution Error](benchmark.sh: 2: Bad substitution)`. The simple workaround is to call the shell script directly `./benchmark.sh` followed by the desired arguments. This applies to all the examples below.
+
 More detailed usage example
 ```sh
 sh benchmark.sh -v "release 1.11" -t "1 4" -b "Array CuArray" -c "tgv jelly" -p "6,7 5,6" -s "100 100" -ft "Float32 Float64"
