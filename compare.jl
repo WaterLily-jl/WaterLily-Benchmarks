@@ -1,7 +1,7 @@
 # Run with
-# julia --project compare.jl --dir="data" --plot="plots" --patterns=["tgv","sphere","cylinder"] --sort=1
-# julia --project compare.jl  --plot="plots" --sort=1 $(find data/ \( -name "tgv*json" -o -name "sphere*json" -o -name "cylinder*json" \) -printf "%T@ %Tc %p\n" | sort -n | awk '{print $7}')
-# julia --project compare.jl --dir="data" --plot="plots" --patterns=\["tgv*6a9eef6","sphere*6a9eef6"\] --speedup_base="CPUx1" --sort=9
+# julia --project compare.jl --data_dir="data" --plot_dir="plots" --patterns=["tgv","sphere","cylinder"] --sort=1
+# julia --project compare.jl --plot_dir="plots" --sort=1 $(find data/ \( -name "tgv*json" -o -name "sphere*json" -o -name "cylinder*json" \) -printf "%T@ %Tc %p\n" | sort -n | awk '{print $7}')
+# julia --project compare.jl --data_dir="data" --plot_dir="plots" --patterns=\["tgv*6a9eef6","sphere*6a9eef6"\] --speedup_base="CPUx1" --sort=9
 using BenchmarkTools, PrettyTables
 include("util.jl")
 
