@@ -13,6 +13,7 @@ data_dir = !isnothing(iarg("data_dir", ARGS)) ? arg_value("data_dir", ARGS) : "d
 patterns = !isnothing(iarg("patterns", ARGS)) ? arg_value("patterns", ARGS) |> parsepatterns |> metaparse : String["tgv", "jelly"]
 patterns = patterns[end] == "" ? patterns[1:end-1] : patterns
 benchmarks_list = nothing
+!isnothing(plot_dir) &&  mkpath(plot_dir)
 if isnothing(iarg("data_dir", ARGS)) && any(split(x, '.')[end] == "json" for x in ARGS)  # passed json files directly
     benchmarks_list = [f for f in ARGS if !any(occursin.(["--sort","--data_dir","--plot_dir"], f))]
 elseif !any(split(x, '.')[end] == "json" for x in ARGS) # no json files passed, we rely on --data_dir
@@ -43,7 +44,6 @@ if length(cases_ordered) == 0 # No case order specified, follow order above
 end
 
 # Table and plots
-!isa(plot_dir, Nothing) &&  mkpath(plot_dir)
 for (i, case) in enumerate(cases_ordered)
     global benchmarks = benchmarks_all_dict[case]
     # Get backends string vector and assert same case sizes for the different backends
@@ -56,8 +56,8 @@ for (i, case) in enumerate(cases_ordered)
     # Get data for PrettyTables
     header = ["Backend", "WaterLily", "Julia", "Precision", "Allocations", "GC [%]", "Time [s]", "Cost [ns/DOF/dt]", "Speed-up"]
     data, base_speedup = Matrix{Any}(undef, length(benchmarks), length(header)), 1.0
-    # plotting_dir := Dict[("WaterLily version", "Julia version", "precision")][backend, log2p, {3}] # times, cost, speedups
-    plotting_dict = Dict{NTuple, Array{Float64}}()
+    # plotting_dir := Dict[("WaterLily version", "Julia version", "precision")][log2p, backend, {3}] # times, cost, speedups
+    global plotting_dict = Dict{NTuple, Array{Float64}}()
 
     printstyled("Benchmark environment: $case $f_test (max_steps=$(benchmarks[1].tags[4]))\n", bold=true)
     for (k, n) in enumerate(log2p_str)
@@ -98,13 +98,17 @@ for (i, case) in enumerate(cases_ordered)
     end
 
     # Plotting each configuration of WaterLily version, Julia version and precision in benchamarks
-    if !isa(plot_dir, Nothing)
+    if !isnothing(plot_dir)
         # Get cases size
         N = prod(tests_dets[case]["size"]) .* 2 .^ (3 .* eval(Meta.parse.(log2p_str)))
         N_str = (N./1e6) .|> x -> @sprintf("%.2f", x)
+        # Sort plotting data
         unique_backends_str = unique(backends_str)
+        backends_sort_idxs = sortperm(unique_backends_str, by=length)
+        sort!(unique_backends_str, by=length)
 
         for (k, data_plot) in plotting_dict
+            data_plot .= data_plot[:, backends_sort_idxs, :]
             versions_key = join(k, '_')
             # Cost plot
             p_cost = plot()
@@ -115,7 +119,8 @@ for (i, case) in enumerate(cases_ordered)
                 ylims=(1, 1000), xlims=(0.1, 600),
                 xlabel="DOF [M]", lw=0, framestyle=:box, grid=:xy, size=(600, 600),
                 left_margin=Plots.Measures.Length(:mm, 5), right_margin=Plots.Measures.Length(:mm, 5),
-                ylabel="Cost [ns/DOF/dt]", title=tests_dets[case]["title"], legend=:bottomleft
+                ylabel="Cost [ns/DOF/dt]", title=tests_dets[case]["title"], legend=:bottomleft,
+                background_color_legend = RGBA{Float64}(1, 1, 1, 0.5)
             )
             fancylogscale!(p_cost)
             savefig(p_cost, joinpath(string(@__DIR__), plot_dir, "$(case)_cost_$(versions_key).pdf"))
@@ -133,7 +138,8 @@ for (i, case) in enumerate(cases_ordered)
                     :size=>(600, 600)
                 )...
             )
-            plot!(p, ylabel="Time [s]", legend=:topleft, left_margin=Plots.Measures.Length(:mm, 0))
+            plot!(p, ylabel="Time [s]", legend=:topleft, background_color_legend = RGBA{Float64}(1, 1, 1, 0.5),
+                left_margin=Plots.Measures.Length(:mm, 0))
             savefig(p, joinpath(string(@__DIR__), plot_dir, "$(case)_benchmark_$(versions_key).pdf"))
         end
     end
