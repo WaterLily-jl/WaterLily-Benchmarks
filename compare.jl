@@ -1,15 +1,17 @@
 # Run with
 # julia --project compare.jl --dir="data" --plot="plots" --patterns=["tgv","sphere","cylinder"] --sort=1
 # julia --project compare.jl  --plot="plots" --sort=1 $(find data/ \( -name "tgv*json" -o -name "sphere*json" -o -name "cylinder*json" \) -printf "%T@ %Tc %p\n" | sort -n | awk '{print $7}')
-
+# julia --project compare.jl --dir="data" --plot="plots" --patterns=\["tgv*6a9eef6","sphere*6a9eef6"\] --speedup_base="CPUx1" --sort=9
 using BenchmarkTools, PrettyTables
 include("util.jl")
 
 # Parse CLA and load benchmarks
+speedup_base = !isnothing(iarg("speedup_base", ARGS)) ? arg_value("speedup_base", ARGS) : nothing
 sort_idx = !isnothing(iarg("sort", ARGS)) ? arg_value("sort", ARGS) |> metaparse : 0
 plot_dir = !isnothing(iarg("plot_dir", ARGS)) ? arg_value("plot_dir", ARGS) : nothing
 data_dir = !isnothing(iarg("data_dir", ARGS)) ? arg_value("data_dir", ARGS) : "data"
 patterns = !isnothing(iarg("patterns", ARGS)) ? arg_value("patterns", ARGS) |> parsepatterns |> metaparse : String["tgv", "jelly"]
+patterns = patterns[end] == "" ? patterns[1:end-1] : patterns
 benchmarks_list = nothing
 if isnothing(iarg("data_dir", ARGS)) && any(split(x, '.')[end] == "json" for x in ARGS)  # passed json files directly
     benchmarks_list = [f for f in ARGS if !any(occursin.(["--sort","--data_dir","--plot_dir"], f))]
@@ -27,23 +29,26 @@ for f in benchmarks_list
     println("    ", f)
 end
 benchmarks_all = [BenchmarkTools.load(f)[1] for f in benchmarks_list]
-
-# Separate benchmarks by test case
-all_cases = String["tgv", "sphere", "cylinder", "jelly"]
-cases_ordered = all_cases[filter(x -> !isnothing(x),[findfirst(x->x==1, contains.(p, all_cases)) for p in patterns])]
-length(cases_ordered) == 0 && (cases_ordered = all_cases)
 cases_str = [b.tags[1] for b in benchmarks_all] |> unique
 benchmarks_all_dict = Dict(Pair{String, Vector{BenchmarkGroup}}(k, []) for k in cases_str)
 for b in benchmarks_all
     push!(benchmarks_all_dict[b.tags[1]], b)
 end
 
+# Separate benchmarks by test case and order them
+all_cases = String["tgv", "sphere", "cylinder", "jelly"]
+cases_ordered = all_cases[filter(x -> !isnothing(x),[findfirst(x->x==1, contains.(p, all_cases)) for p in patterns])]
+if length(cases_ordered) == 0 # No case order specified, follow order above
+    cases_ordered = all_cases[any.(contains.(benchmarks_list, c) for c in all_cases)]
+end
+
 # Table and plots
 !isa(plot_dir, Nothing) &&  mkpath(plot_dir)
 for (i, case) in enumerate(cases_ordered)
-    benchmarks = benchmarks_all_dict[case]
+    global benchmarks = benchmarks_all_dict[case]
     # Get backends string vector and assert same case sizes for the different backends
-    backends_str = [String.(k)[1] for k in keys.(benchmarks)]
+    global backends_str = [String.(k)[1] for k in keys.(benchmarks)]
+    speedup_base_idx = findfirst(x->x==speedup_base, backends_str)
     log2p_str = [String.(keys(benchmarks[i][backend_str])) for (i, backend_str) in enumerate(backends_str)]
     length(unique(log2p_str)) != 1 && @error "Case sizes missmatch."
     log2p_str = sort(log2p_str[1])
@@ -59,7 +64,11 @@ for (i, case) in enumerate(cases_ordered)
         printstyled("▶ log2p = $n\n", bold=true)
         for (i, benchmark) in enumerate(benchmarks)
             datap = benchmark[backends_str[i]][n][f_test]
-            speedup = i == 1 ? 1.0 : benchmarks[1][backends_str[1]][n][f_test].times[1] / datap.times[1]
+            if !isnothing(speedup_base)
+                speedup = benchmarks[speedup_base_idx][speedup_base][n][f_test].times[1] / datap.times[1]
+            else
+                speedup = i == 1 ? 1.0 : benchmarks[1][backends_str[1]][n][f_test].times[1] / datap.times[1]
+            end
             N = prod(tests_dets[case]["size"]) .* 2 .^ (3 .* eval(Meta.parse.(n)))
             cost = datap.times[1] / N / benchmarks[1].tags[4]
             waterlily_ref = String(find_git_ref(benchmark.tags[end-1]))
@@ -77,8 +86,13 @@ for (i, case) in enumerate(cases_ordered)
             baseline_idx = findfirst(x->x==1, sorted_idx)
             data .= data[sorted_idx, :]
         end
-        hl_base = Highlighter(f=(data, i, j) -> sorted_cond ? i == findfirst(x->x==1, sorted_idx) : i==1,
-            crayon=Crayon(foreground=:blue))
+        if !isnothing(speedup_base)
+            hl_base = Highlighter(f=(data, i, j) -> sorted_cond ? i == findfirst(x->x==speedup_base_idx, sorted_idx) : i==speedup_base_idx,
+                crayon=Crayon(foreground=:blue))
+        else
+            hl_base = Highlighter(f=(data, i, j) -> sorted_cond ? i == findfirst(x->x==1, sorted_idx) : i==1,
+                crayon=Crayon(foreground=:blue))
+        end
         hl_fast = Highlighter(f=(data, i, j) -> i == argmin(data[:, end-1]), crayon=Crayon(foreground=(32,125,56)))
         pretty_table(data; header=header, header_alignment=:c, highlighters=(hl_base, hl_fast), formatters=ft_printf("%.2f", [6,7,8,9]))
     end
