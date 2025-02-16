@@ -9,7 +9,7 @@ include("util.jl")
 function tgv(p, backend; Re=1600, T=Float32)
     L = 2^p; U = 1; κ=π/L; ν = 1/(κ*Re)
     function uλ(i,xyz)
-        x,y,z = @. xyz/L*π
+        x,y,z = @. (xyz-0.0)/L*π
         i==1 && return -U*sin(x)*cos(y)*cos(z)
         i==2 && return  U*cos(x)*sin(y)*cos(z)
         return 0.
@@ -23,11 +23,12 @@ function sphere(p, backend; Re=3700, U=1, T=Float32)
     center = @SVector T[1.5D, 3D, 3D]; radius = T(D/2)
     body = AutoBody((x,t) -> √sum(abs2, x .- center) - radius)
     Simulation(L, (U, 0, 0), D; U=U, ν=ν, body=body, T=T, mem=backend, exitBC=true)
+    # Simulation(L, (U, 0, 0), D; U=U, ν=ν, body=body, T=T, mem=backend, perdir=(2, 3), exitBC=true)
 end
 
 function cylinder(p, backend; Re=1e3, U=1, T=Float32)
-    L = 2^p; R = L/2; ν = U*L/Re
-    center = SA[1.5L, 3L, 0]
+    L = 2^p; R = T(L/2); ν = U*L/Re
+    center = @SVector T[1.5L, 3L, 0]
     function sdf(xyz, t)
         x, y, z = xyz - center
         √sum(abs2, SA[x, y, 0]) - R
@@ -83,5 +84,6 @@ cases, log2p, max_steps, ftype, backend, data_dir = parse_cla(ARGS;
 )
 
 # Generate benchmark data
+data_dir = joinpath(data_dir, hostname * "_" * git_hash)
 mkpath(data_dir)
 run_benchmarks(cases, log2p, max_steps, ftype, backend, backend_str[backend]; data_dir)

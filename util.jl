@@ -45,6 +45,17 @@ function find_git_ref(hash)
     end
     return hash
 end
+hostname_dict = Dict{String, String}("alogin" => "MN5", "uan" => "LUMI")
+function get_hostname()
+    hostname = gethostname()
+    for (k,v) in hostname_dict
+        if occursin(k, hostname)
+           return v
+        end
+    end
+    return hostname
+end
+hostname = get_hostname()
 getf(str) = eval(Symbol(str))
 
 backend_str = Dict(Array => "CPUx"*@sprintf("%.2d", Threads.nthreads()))

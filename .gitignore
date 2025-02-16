@@ -3,3 +3,5 @@ Manifest.toml
 *.pdf
 *.json
 LocalPreferences.toml
+**data*/
+**plot*/
