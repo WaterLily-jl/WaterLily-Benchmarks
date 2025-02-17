@@ -222,7 +222,7 @@ all_cases = String["tgv", "sphere", "cylinder", "jelly", "donut"]
 tests_dets = Dict(
     "tgv" => Dict("size" => (1, 1, 1), "title" => "TGV"),
     "sphere" => Dict("size" => (16, 6, 6), "title" => "Sphere"),
-    "cylinder" => Dict("size" => (12, 6, 2), "title" => "Moving cylinder"),
+    "cylinder" => Dict("size" => (9, 6, 2), "title" => "Moving cylinder"),
     "donut" => Dict("size" => (2, 1, 1), "title" => "Donut"),
     "jelly" => Dict("size" => (1, 1, 4), "title" => "Jelly"),
 )
