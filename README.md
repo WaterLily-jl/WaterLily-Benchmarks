@@ -51,8 +51,8 @@ or by using pattern syntax
 ```sh
 julia --project compare.jl --data_dir="data" --patterns=["tgv*CPU"]
 ```
-for which only TGV benchmarks on a CPU backend found in the `"data"` directory would be processed. The following syntax would be produce equivalent results:
+for which only TGV benchmarks on a CPU backend found in the `"data"` directory would be processed. The following syntax would produce equivalent results:
 ```sh
 julia --project compare.jl $(find data -name "tgv*CPU.json" -printf "%T@ %Tc %p\n" | sort -n | awk '{print $7}') --sort=1
 ```
-by taking the `tgv` JSON files, sort them by creation time, and pass them as arguments to the `compare.jl` program. Finally, note that the first benchmark passed as argument is taken as reference to compute speed-ups of other benchmarks: `speedup_x = time(benchmark_1) / time(benchmark_x)`. The `--sort=<1 to 8>` argument can also be used when running the comparison. It will sort the benchmark table rows by the values corresponding to the column index passed as argument. `--sort=1` corresponds to sorting by backend. The baseline row is highlighted in blue, and the fastest run in a table is highlighted in green.
+by taking the `tgv` JSON files, sort them by creation time, and pass them as arguments to the `compare.jl` program. Finally, `--speedup_base=<backend>` can be passed compute speed-ups: `speedup_x = time(benchmark_<backend>) / time(benchmark_x)`. The `--sort=<1 to 9>` argument can also be used when running the comparison. It will sort the benchmark table rows by the values corresponding to the column index passed as argument. `--sort=1` corresponds to sorting by backend alphabetically. The speedup baseline row is highlighted in blue, and the fastest run in a table is highlighted in green.

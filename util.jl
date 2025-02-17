@@ -1,9 +1,10 @@
 using Plots, StatsPlots, LaTeXStrings, CategoricalArrays, Printf, ColorSchemes
+using KernelAbstractions
 
 iarg(arg, args) = occursin.(arg, args) |> findfirst
 arg_value(arg, args) = split(args[iarg(arg, args)], "=")[end]
 metaparse(x) = eval(Meta.parse(x))
-parsepatterns(x) = replace(x,","=>("\",\""),"["=>("[\""),"]"=>("\"]"))
+parsepatterns(x) = replace(x,","=>("\",\""),"["=>("[\""),"]"=>("\",]"),",,]"=>("\",]"))
 
 function parse_cla(args; cases=["tgv"], log2p=[(6,7)], max_steps=[100], ftype=[Float32], backend=Array, data_dir="data/")
     cases = !isnothing(iarg("cases", args)) ? arg_value("cases", args) |> metaparse : cases
@@ -20,7 +21,7 @@ macro add_benchmark(args...)
     return quote
         $suite[$label] = @benchmarkable begin
             $ex
-            synchronize($b)
+            KernelAbstractions.synchronize($b)
         end
     end |> esc
 end
@@ -31,7 +32,7 @@ function add_to_suite!(suite, sim_function; p=(3,4,5), s=100, ft=Float32, backen
         sim = sim_function(n, backend; T=ft)
         sim_step!(sim, typemax(ft); max_steps=5, verbose=false, remeasure=remeasure) # warm up
         suite[bstr][repr(n)] = BenchmarkGroup([repr(n)])
-        KA_backend = get_backend(sim.flow.p)
+        KA_backend = KernelAbstractions.get_backend(sim.flow.p)
         @add_benchmark sim_step!($sim, $typemax($ft); max_steps=$s, verbose=false, remeasure=$remeasure) $KA_backend suite[bstr][repr(n)] "sim_step!"
     end
 end
@@ -45,14 +46,30 @@ function find_git_ref(hash)
     end
     return hash
 end
+hostname_dict = Dict{String, String}("alogin" => "MN5", "uan" => "LUMI")
+function get_hostname()
+    hostname = gethostname()
+    for (k,v) in hostname_dict
+        if occursin(k, hostname)
+           return v
+        end
+    end
+    return hostname
+end
+hostname = get_hostname()
 getf(str) = eval(Symbol(str))
 
 backend_str = Dict(Array => "CPUx"*@sprintf("%.2d", Threads.nthreads()))
-check_compiler(compiler,parse_str) = try occursin(parse_str, read(`$compiler --version`, String)) catch _ false end
-_cuda = check_compiler("nvcc","release")
-_rocm = check_compiler("hipcc","version")
-_cuda && (using CUDA: CuArray; backend_str[CuArray] = "CUDA")
-_rocm && (using AMDGPU: ROCArray; backend_str[ROCArray] = "ROCm")
+check_compiler(compiler, parse_str) = try occursin(parse_str, read(`$compiler --version`, String)) catch _ false end
+check_smi(smi, parse_str) = try occursin(parse_str, read(`$smi`, String)) catch _ false end
+_cuda_compiler = check_compiler("nvcc","release")
+_cuda_smi = check_smi("nvidia-smi","NVIDIA-SMI")
+_rocm_compiler = check_compiler("hipcc","version")
+_rocm_smi = check_smi("rocm-smi","ROCM-SMI")
+_cuda = _cuda_compiler || _cuda_smi
+_rocm = _rocm_compiler || _rocm_smi
+_cuda && (using CUDA: CuArray; backend_str[CuArray] = "GPU-NVIDIA")
+_rocm && (using AMDGPU: ROCArray; backend_str[ROCArray] = "GPU-AMD")
 (_cuda || _rocm) && (using GPUArrays: allowscalar; allowscalar(false))
 
 # Plotting utils
@@ -194,13 +211,14 @@ function rdir(dir, patterns)
     for (root, _, files) in walkdir(dir)
         fpaths = joinpath.(root, files)
         length(fpaths) == 0 && continue
-        matches = [filter(x -> occursin(p, x), fpaths) for p in patterns]
+        matches = length(patterns) > 0 ? [filter(x -> occursin(p, x), fpaths) for p in patterns] : fpaths
         push!(results, vcat(matches...)...)
     end
     results
 end
 
-# Benchmark sizes
+# Benchmark and sizes
+all_cases = String["tgv", "sphere", "cylinder", "jelly", "donut"]
 tests_dets = Dict(
     "tgv" => Dict("size" => (1, 1, 1), "title" => "TGV"),
     "sphere" => Dict("size" => (16, 6, 6), "title" => "Sphere"),
