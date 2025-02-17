@@ -6,6 +6,7 @@ using BenchmarkTools, PrettyTables
 include("util.jl")
 
 # Parse CLA and load benchmarks
+backend_color = !isnothing(iarg("backend_color", ARGS)) ? arg_value("backend_color", ARGS) |> Symbol : :darkrainbow
 speedup_base = !isnothing(iarg("speedup_base", ARGS)) ? arg_value("speedup_base", ARGS) : nothing
 sort_idx = !isnothing(iarg("sort", ARGS)) ? arg_value("sort", ARGS) |> metaparse : 0
 plot_dir = !isnothing(iarg("plot_dir", ARGS)) ? arg_value("plot_dir", ARGS) : "plots"
@@ -105,7 +106,7 @@ for (i, case) in enumerate(cases_ordered)
         unique_backends_str = unique(backends_str)
         backends_sort_idxs = sortperm(unique_backends_str, by=length)
         sort!(unique_backends_str, by=length)
-        cg = cgrad(:lightrainbow, length(unique_backends_str), categorical=true)
+        cg = cgrad(backend_color, length(unique_backends_str), categorical=true)
         colors = [c for c in cg.colors]
 
         for (k, data_plot) in plotting_dict
