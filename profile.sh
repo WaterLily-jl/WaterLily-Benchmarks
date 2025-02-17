@@ -14,7 +14,7 @@ julia_version () {
 ## Grep current julia version
 waterlily_profile_branch () {
     cd $WATERLILY_DIR
-    git checkout origin/kernel_profiling2
+    git checkout profiling
     julia --project -e "using Pkg; Pkg.update();"
     cd $THIS_DIR
 }
@@ -122,10 +122,10 @@ fi
 display_info
 
 ## Checkout to WaterLily profiling branch and update it
-# waterlily_profile_branch
+waterlily_profile_branch
 
 ## Update this environment
-# update_environment
+update_environment
 
 ## Profiling
 args_cases="--backend=$BACKEND --max_steps=$MAXSTEPS --ftype=$FTYPE"
