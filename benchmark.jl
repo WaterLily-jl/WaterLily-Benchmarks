@@ -1,6 +1,5 @@
 using WaterLily
 using BenchmarkTools
-using KernelAbstractions: synchronize, get_backend
 using StaticArrays
 
 include("util.jl")

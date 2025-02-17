@@ -1,16 +1,16 @@
 # Run with
 # julia --project compare.jl --data_dir="data" --plot_dir="plots" --patterns=["tgv","sphere","cylinder"] --sort=1
 # julia --project compare.jl --plot_dir="plots" --sort=1 $(find data/ \( -name "tgv*json" -o -name "sphere*json" -o -name "cylinder*json" \) -printf "%T@ %Tc %p\n" | sort -n | awk '{print $7}')
-# julia --project compare.jl --data_dir="data" --plot_dir="plots" --patterns=\["tgv*6a9eef6","sphere*6a9eef6"\] --speedup_base="CPUx1" --sort=9
+# julia --project compare.jl --data_dir="data" --plot_dir="plots" --patterns=\["tgv*6a9eef6","sphere*6a9eef6"\] --speedup_base="CPUx01" --sort=9
 using BenchmarkTools, PrettyTables
 include("util.jl")
 
 # Parse CLA and load benchmarks
 speedup_base = !isnothing(iarg("speedup_base", ARGS)) ? arg_value("speedup_base", ARGS) : nothing
 sort_idx = !isnothing(iarg("sort", ARGS)) ? arg_value("sort", ARGS) |> metaparse : 0
-plot_dir = !isnothing(iarg("plot_dir", ARGS)) ? arg_value("plot_dir", ARGS) : nothing
+plot_dir = !isnothing(iarg("plot_dir", ARGS)) ? arg_value("plot_dir", ARGS) : "plots"
 data_dir = !isnothing(iarg("data_dir", ARGS)) ? arg_value("data_dir", ARGS) : "data"
-patterns = !isnothing(iarg("patterns", ARGS)) ? arg_value("patterns", ARGS) |> parsepatterns |> metaparse : String["tgv", "jelly"]
+patterns = !isnothing(iarg("patterns", ARGS)) ? arg_value("patterns", ARGS) |> parsepatterns |> metaparse : [""]
 patterns = patterns[end] == "" ? patterns[1:end-1] : patterns
 benchmarks_list = nothing
 !isnothing(plot_dir) &&  mkpath(plot_dir)
@@ -37,7 +37,6 @@ for b in benchmarks_all
 end
 
 # Separate benchmarks by test case and order them
-all_cases = String["tgv", "sphere", "cylinder", "jelly"]
 cases_ordered = all_cases[filter(x -> !isnothing(x),[findfirst(x->x==1, contains.(p, all_cases)) for p in patterns])]
 if length(cases_ordered) == 0 # No case order specified, follow order above
     cases_ordered = all_cases[any.(contains.(benchmarks_list, c) for c in all_cases)]
@@ -106,6 +105,8 @@ for (i, case) in enumerate(cases_ordered)
         unique_backends_str = unique(backends_str)
         backends_sort_idxs = sortperm(unique_backends_str, by=length)
         sort!(unique_backends_str, by=length)
+        cg = cgrad(:lightrainbow, length(unique_backends_str), categorical=true)
+        colors = [c for c in cg.colors]
 
         for (k, data_plot) in plotting_dict
             data_plot .= data_plot[:, backends_sort_idxs, :]
@@ -113,13 +114,13 @@ for (i, case) in enumerate(cases_ordered)
             # Cost plot
             p_cost = plot()
             for (i, bstr) in enumerate(unique_backends_str)
-                scatter!(p_cost, N./1e6, data_plot[:, i, 2], label=unique_backends_str[i], ms=10, ma=1)
+                scatter!(p_cost, N./1e6, data_plot[:, i, 2], label=unique_backends_str[i], ms=10, ma=1, color=colors[i])
             end
             scatter!(p_cost, yaxis=:log10, xaxis=:log10, yminorgrid=true, xminorgrid=true,
                 ylims=(1, 1000), xlims=(0.1, 600),
                 xlabel="DOF [M]", lw=0, framestyle=:box, grid=:xy, size=(600, 600),
                 left_margin=Plots.Measures.Length(:mm, 5), right_margin=Plots.Measures.Length(:mm, 5),
-                ylabel="Cost [ns/DOF/dt]", title=tests_dets[case]["title"], legend=:bottomleft,
+                ylabel="Cost [ns/DOF/dt]", title=tests_dets[case]["title"], legend=:topright,
                 background_color_legend = RGBA{Float64}(1, 1, 1, 0.5)
             )
             fancylogscale!(p_cost)
@@ -134,7 +135,7 @@ for (i, case) in enumerate(cases_ordered)
                 series_annotations=vec(transpose(data_plot[:, :, 3])) .|> x -> @sprintf("%d", x) .|> latexstring, bar_width=0.92,
                 Dict(:xlabel=>"DOF [M]", :title=>tests_dets[case]["title"],
                     :ylims=>(1e-1, 1e5), :lw=>0, :framestyle=>:box, :yaxis=>:log10, :grid=>true,
-                    :color=>reshape(palette([:cyan, :green], length(unique_backends_str))[1:length(unique_backends_str)], (1, length(unique_backends_str))),
+                    :color=>reshape(colors, (1, length(unique_backends_str))),
                     :size=>(600, 600)
                 )...
             )
