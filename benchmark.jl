@@ -35,7 +35,7 @@ function cylinder(p, backend; Re=1e3, U=1, T=Float32)
     function map(xyz, t)
         xyz - SA[0, R*sin(t*U/L), 0]
     end
-    Simulation((12L, 6L, 2L), (U, 0, 0), L; U=U, ν=ν, body=AutoBody(sdf, map), T=T, mem=backend, exitBC=true, perdir=(3,))
+    Simulation((9L, 6L, 2L), (U, 0, 0), L; U=U, ν=ν, body=AutoBody(sdf, map), T=T, mem=backend, exitBC=true, perdir=(3,))
 end
 
 function donut(p, backend; Re=1e3, U=1, T=Float32)
