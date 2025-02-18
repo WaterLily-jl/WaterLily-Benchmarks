@@ -1,5 +1,3 @@
-using BenchmarkTools
-
 include("cases.jl")
 include("util.jl")
 

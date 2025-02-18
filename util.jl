@@ -1,10 +1,13 @@
+using BenchmarkTools
 using Plots, StatsPlots, LaTeXStrings, CategoricalArrays, Printf, ColorSchemes
 using KernelAbstractions
 
-iarg(arg, args) = occursin.(arg, args) |> findfirst
+iarg(arg) = occursin.(arg, ARGS) |> findfirst
 arg_value(arg, args) = split(args[iarg(arg, args)], "=")[end]
+arg_value(arg) = split(ARGS[iarg(arg)], "=")[end]
 metaparse(x) = eval(Meta.parse(x))
 parsepatterns(x) = replace(x,","=>("\",\""),"["=>("[\""),"]"=>("\",]"),",,]"=>("\",]"))
+getf(str) = eval(Symbol(str))
 
 function parse_cla(args; cases=["tgv"], log2p=[(6,7)], max_steps=[100], ftype=[Float32], backend=Array, data_dir="data/")
     cases = !isnothing(iarg("cases", args)) ? arg_value("cases", args) |> metaparse : cases
@@ -57,7 +60,6 @@ function get_hostname()
     return hostname
 end
 hostname = get_hostname()
-getf(str) = eval(Symbol(str))
 
 backend_str = Dict(Array => "CPUx"*@sprintf("%.2d", Threads.nthreads()))
 check_compiler(compiler, parse_str) = try occursin(parse_str, read(`$compiler --version`, String)) catch _ false end
