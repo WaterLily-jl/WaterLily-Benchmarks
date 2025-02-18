@@ -68,7 +68,7 @@ VERSION=$JULIA_USER_VERSION
 BACKEND='CuArray'
 ## Default cases. Arrays below must be same length (specify each case individually)
 CASES=() # ('tgv' 'sphere' 'cylinder')
-LOG2P=() # ('7' '5' '6')
+LOG2P=() # ('8' '5' '6')
 MAXSTEPS='1000'
 FTYPE='Float32'
 RUN='0'

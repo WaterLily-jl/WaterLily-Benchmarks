@@ -3,8 +3,9 @@ using Plots, StatsPlots, LaTeXStrings, CategoricalArrays, Printf, ColorSchemes
 using KernelAbstractions
 
 iarg(arg) = occursin.(arg, ARGS) |> findfirst
-arg_value(arg, args) = split(args[iarg(arg, args)], "=")[end]
+iarg(arg, args) = occursin.(arg, args) |> findfirst
 arg_value(arg) = split(ARGS[iarg(arg)], "=")[end]
+arg_value(arg, args) = split(args[iarg(arg, args)], "=")[end]
 metaparse(x) = eval(Meta.parse(x))
 parsepatterns(x) = replace(x,","=>("\",\""),"["=>("[\""),"]"=>("\",]"),",,]"=>("\",]"))
 getf(str) = eval(Symbol(str))
