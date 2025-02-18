@@ -4,29 +4,27 @@
 # WaterLily#kernel_profiling2 branch must be used for traces.
 
 # Analyse stats of the main kernels for the main ranges (project! and conv_diff!)
-# ncu --set full --kernel-name gpu___kern__446 --launch-skip 10586 --launch-count 1 -o myreport julia --project=/home/b-fg/Documents/tudelft/documents/papers/journals/WaterLily.jl_CPC_2024/jl/WaterLilyBenchmarks.jl/profile --startup-file=no /home/b-fg/Documents/tudelft/documents/papers/journals/WaterLily.jl_CPC_2024/jl/WaterLilyBenchmarks.jl/profile/profile.jl --case=tgv --log2p=8 --backend=CuArray --max_steps=1000 --ftype=Float32 --run=1
-using CairoMakie
-using Printf
+# ncu --set full --kernel-name gpu___kern__451 --launch-skip 10586 --launch-count 1 -o myreport julia --project=/home/b-fg/Documents/tudelft/documents/papers/journals/WaterLily.jl_CPC_2024/jl/WaterLilyBenchmarks.jl/profile --startup-file=no /home/b-fg/Documents/tudelft/documents/papers/journals/WaterLily.jl_CPC_2024/jl/WaterLilyBenchmarks.jl/profile/profile.jl --case=tgv --log2p=8 --backend=CuArray --max_steps=1000 --ftype=Float32 --run=1
 
 include("cases.jl")
 include("util.jl")
+using CairoMakie
 
 function run_profiling(sim, max_steps; remeasure=false)
     for i in 1:max_steps sim_step!(sim; remeasure=remeasure) end
 end
 
-const max_steps_const = 1000
-const T_const = Float32
-const B_const = CuArray
-
 # if "--run=1" in ARGS, run profiling
 isnothing(iarg("case")) && @error "No case specified."
 case = arg_value("case")
+data_dir = !isnothing(iarg("data_dir")) ? arg_value("data_dir") : "data/profiling/"
+plot_dir = !isnothing(iarg("plot_dir")) ? arg_value("plot_dir") : "plots/profiling/"
+!isnothing(plot_dir) &&  mkpath(plot_dir)
 if metaparse(arg_value("run")) == 1 # run profiling
     log2p = !isnothing(iarg("log2p")) ? arg_value("log2p") |> metaparse : log2p
-    max_steps = !isnothing(iarg("max_steps")) ? arg_value("max_steps") |> metaparse : max_steps_const
-    ftype = !isnothing(iarg("ftype")) ? arg_value("ftype") |> metaparse : T_const
-    backend = !isnothing(iarg("backend")) ? arg_value("backend") |> x -> eval(Symbol(x)) : B_const
+    max_steps = !isnothing(iarg("max_steps")) ? arg_value("max_steps") |> metaparse : 1000
+    ftype = !isnothing(iarg("ftype")) ? arg_value("ftype") |> metaparse : Float32
+    backend = !isnothing(iarg("backend")) ? arg_value("backend") |> x -> eval(Symbol(x)) : CuArray
 
     sim = getf(case)(log2p, backend; T=ftype)
     run_profiling(sim, max_steps; remeasure=any(x->x==case, ["cylinder", "jelly"]))
@@ -35,8 +33,7 @@ else # postprocess profiling
     kernels = ["project!", "CFL!", "BDIM!", "BC!", "conv_diff!", "scale_u!", "copy_u0!", "exitBC!", "measure!"] # "BCTuple", "accelerate!"
     kernel_instances_per_dt = Float64[2, 1, 2, 4, 2, 2, 2, 2, 1, 1]
     kernels_dict = Dict(k=>Dict{String,Any}("ipdt"=>kernel_instances_per_dt[i], "time_weighted"=>0.0) for (i,k) in enumerate(kernels))
-    data = readlines(`nsys stats -r nvtx_gpu_proj_sum "data/$case/$case.sqlite"`)[7:end-1] .|> x->split(x,' '; keepempty=false)
-    # println(read(`nsys stats -r nvtx_gpu_proj_sum "data/$case/$case.sqlite"`, String))
+    data = readlines(`nsys stats -r nvtx_gpu_proj_sum "$data_dir/$case/$case.sqlite"`)[7:end-1] .|> x->split(x,' '; keepempty=false)
     length(data) < 5 && @error "Profiling was not successful."
     for kernel in data
         kernel_name = split(kernel[1],':')[end]
@@ -68,8 +65,8 @@ else # postprocess profiling
     kernel_weighted_time = kernel_weighted_time[sortidx]
     cg = cgrad(:darktest, length(kernels)-2, categorical=true)
     colors = [c for c in cg.colors]
-    with_theme(theme_latexfonts(), fontsize=25, figure_padding=1) do
-        fig, ax, plt = pie(
+    CairoMakie.with_theme(theme_latexfonts(), fontsize=25, figure_padding=1) do
+        fig, ax, plt = CairoMakie.pie(
             kernel_weighted_time,
             color = colors,
             radius = 1,
@@ -94,7 +91,7 @@ else # postprocess profiling
             pc = kernel_weighted_time[i]/sum(kernel_weighted_time)*100
             pc > 1.9 && Makie.text!(x, y, text=@sprintf("%.0f", pc), color=:white, align=(:center, :center))
         end
-        fig_path = string(@__DIR__) * "../../../../tex/img/$(case)_profile.pdf"
+        fig_path = joinpath(string(@__DIR__), plot_dir, "$(case)_profiling.pdf")
         save(fig_path, fig)
         println("Figure stored in $(fig_path)")
     end

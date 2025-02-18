@@ -9,8 +9,8 @@ include("util.jl")
 backend_color = !isnothing(iarg("backend_color", ARGS)) ? arg_value("backend_color", ARGS) |> Symbol : :darkrainbow
 speedup_base = !isnothing(iarg("speedup_base", ARGS)) ? arg_value("speedup_base", ARGS) : nothing
 sort_idx = !isnothing(iarg("sort", ARGS)) ? arg_value("sort", ARGS) |> metaparse : 0
-plot_dir = !isnothing(iarg("plot_dir", ARGS)) ? arg_value("plot_dir", ARGS) : "plots"
-data_dir = !isnothing(iarg("data_dir", ARGS)) ? arg_value("data_dir", ARGS) : "data"
+plot_dir = !isnothing(iarg("plot_dir", ARGS)) ? arg_value("plot_dir", ARGS) : "plots/benchmark"
+data_dir = !isnothing(iarg("data_dir", ARGS)) ? arg_value("data_dir", ARGS) : "data/benchmark"
 patterns = !isnothing(iarg("patterns", ARGS)) ? arg_value("patterns", ARGS) |> parsepatterns |> metaparse : [""]
 patterns = patterns[end] == "" ? patterns[1:end-1] : patterns
 benchmarks_list = nothing
@@ -125,7 +125,9 @@ for (i, case) in enumerate(cases_ordered)
                 background_color_legend = RGBA{Float64}(1, 1, 1, 0.5)
             )
             fancylogscale!(p_cost)
-            savefig(p_cost, joinpath(string(@__DIR__), plot_dir, "$(case)_cost_$(versions_key).pdf"))
+            fig_path = joinpath(string(@__DIR__), plot_dir, "$(case)_cost_$(versions_key).pdf")
+            savefig(p_cost, fig_path)
+            println("Figure stored in $(fig_path)")
 
             # Speedup plot
             groups = repeat(N_str, inner=length(unique_backends_str)) |> CategoricalArray
@@ -142,7 +144,9 @@ for (i, case) in enumerate(cases_ordered)
             )
             plot!(p, ylabel="Time [s]", legend=:topleft, background_color_legend = RGBA{Float64}(1, 1, 1, 0.5),
                 left_margin=Plots.Measures.Length(:mm, 0))
-            savefig(p, joinpath(string(@__DIR__), plot_dir, "$(case)_benchmark_$(versions_key).pdf"))
+            fig_path = joinpath(string(@__DIR__), plot_dir, "$(case)_benchmark_$(versions_key).pdf")
+            savefig(p, fig_path)
+            println("Figure stored in $(fig_path)")
         end
     end
 end

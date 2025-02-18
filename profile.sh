@@ -61,6 +61,7 @@ display_info () {
 ## Default backends
 WL_DIR=""
 DATA_DIR="data/profiling/"
+PLOT_DIR="plots/profiling/"
 WL_VERSIONS='profiling'
 JULIA_USER_VERSION=$(julia_version)
 VERSION=$JULIA_USER_VERSION
@@ -120,6 +121,10 @@ case "$1" in
     DATA_DIR=($2)
     shift
     ;;
+    --plot_dir|-pd)
+    PLOT_DIR=($2)
+    shift
+    ;;
     *)
     printf "ERROR: Invalid argument %s\n" "${1}" 1>&2
     exit 1
@@ -172,7 +177,7 @@ display_info
 update_environment
 
 ## Profiling
-args_cases="--backend=$BACKEND --max_steps=$MAXSTEPS --ftype=$FTYPE"
+args_cases="--backend=$BACKEND --max_steps=$MAXSTEPS --ftype=$FTYPE --data_dir=$DATA_DIR --plot_dir=$PLOT_DIR"
 for ((i = 0; i < ${#CASES[@]}; ++i)); do
     case=${CASES[$i]}
     mkdir -p $DATA_DIR/$case
