@@ -50,17 +50,7 @@ function find_git_ref(hash)
     end
     return hash
 end
-hostname_dict = Dict{String, String}("alogin" => "MN5", "uan" => "LUMI")
-function get_hostname()
-    hostname = gethostname()
-    for (k,v) in hostname_dict
-        if occursin(k, hostname)
-           return v
-        end
-    end
-    return hostname
-end
-hostname = get_hostname()
+hostname = gethostname()
 
 backend_str = Dict(Array => "CPUx"*@sprintf("%.2d", Threads.nthreads()))
 check_compiler(compiler, parse_str) = try occursin(parse_str, read(`$compiler --version`, String)) catch _ false end
@@ -194,7 +184,7 @@ function annotated_groupedbar(xx, yy, group; series_annotations="", bar_width=1.
     xt = (1:n) .- 0.5               # plot x-coordinate of groups' centers
     dx = bar_width/m                # each group occupies bar_width units along x
     # dy = diff([extrema(yy)...])[1]
-    x2 = [xt[i] + (j - m/2 - 0.3)*dx for j in 1:m, i in 1:n][:]
+    x2 = [xt[i] + (j - m/2 - 0.4)*dx for j in 1:m, i in 1:n][:]
     k = 1
     for i in 1:n, j in 1:m
         y0 = gp[1][2j][:y][i]*1.3# + 0.04*dy
