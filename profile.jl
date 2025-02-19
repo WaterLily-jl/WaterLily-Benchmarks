@@ -1,7 +1,7 @@
 # Run profiling with (eg): nsys profile -o "./data/tgv/tgv.nsys-rep" --force-overwrite=true --export=sqlite julia --project profile.jl --case="tgv" --log2p=8 --run=1
 # Analyse as (eg): nsys stats -r nvtx_gpu_proj_sum "./data/tgv/tgv.sqlite"
 # Profiling results is stored in data/. Data not included in the repository because it weights 1GB approximately, but it is available upon request.
-# WaterLily#kernel_profiling2 branch must be used for traces.
+# WaterLily#profiling branch must be used for traces.
 
 # Analyse stats of the main kernels for the main ranges (project! and conv_diff!)
 # ncu --set full --kernel-name gpu___kern__451 --launch-skip 10586 --launch-count 1 -o myreport julia --project=/home/b-fg/Documents/tudelft/documents/papers/journals/WaterLily.jl_CPC_2024/jl/WaterLilyBenchmarks.jl/profile --startup-file=no /home/b-fg/Documents/tudelft/documents/papers/journals/WaterLily.jl_CPC_2024/jl/WaterLilyBenchmarks.jl/profile/profile.jl --case=tgv --log2p=8 --backend=CuArray --max_steps=1000 --ftype=Float32 --run=1
