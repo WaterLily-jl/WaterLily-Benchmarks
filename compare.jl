@@ -1,16 +1,16 @@
 # Run with
-# julia --project compare.jl --data_dir="data" --plot_dir="plots" --patterns=["tgv","sphere","cylinder"] --sort=1
+# julia --project compare.jl --data_dir="data/benchmark" --plot_dir="plots" --patterns=\["tgv","sphere","cylinder"\] --sort=1
 # julia --project compare.jl --plot_dir="plots" --sort=1 $(find data/ \( -name "tgv*json" -o -name "sphere*json" -o -name "cylinder*json" \) -printf "%T@ %Tc %p\n" | sort -n | awk '{print $7}')
-# julia --project compare.jl --data_dir="data" --plot_dir="plots" --patterns=\["tgv*6a9eef6","sphere*6a9eef6"\] --speedup_base="CPUx01" --sort=9
+# julia --project compare.jl --data_dir="data/benchmark" --plot_dir="plots" --patterns=\["tgv","sphere","cylinder"\] --speedup_base="CPUx01" --sort=9
 using BenchmarkTools, PrettyTables
 include("util.jl")
 
 # Parse CLA and load benchmarks
-backend_color = !isnothing(iarg("backend_color", ARGS)) ? arg_value("backend_color", ARGS) |> Symbol : :darkrainbow
 speedup_base = !isnothing(iarg("speedup_base", ARGS)) ? arg_value("speedup_base", ARGS) : nothing
+backend_color = !isnothing(iarg("backend_color", ARGS)) ? arg_value("backend_color", ARGS) |> Symbol : :lightrainbow
 sort_idx = !isnothing(iarg("sort", ARGS)) ? arg_value("sort", ARGS) |> metaparse : 0
-plot_dir = !isnothing(iarg("plot_dir", ARGS)) ? arg_value("plot_dir", ARGS) : "plots"
-data_dir = !isnothing(iarg("data_dir", ARGS)) ? arg_value("data_dir", ARGS) : "data"
+plot_dir = !isnothing(iarg("plot_dir", ARGS)) ? arg_value("plot_dir", ARGS) : "plots/benchmark"
+data_dir = !isnothing(iarg("data_dir", ARGS)) ? arg_value("data_dir", ARGS) : "data/benchmark"
 patterns = !isnothing(iarg("patterns", ARGS)) ? arg_value("patterns", ARGS) |> parsepatterns |> metaparse : [""]
 patterns = patterns[end] == "" ? patterns[1:end-1] : patterns
 benchmarks_list = nothing
@@ -45,9 +45,9 @@ end
 
 # Table and plots
 for (i, case) in enumerate(cases_ordered)
-    global benchmarks = benchmarks_all_dict[case]
+    benchmarks = benchmarks_all_dict[case]
     # Get backends string vector and assert same case sizes for the different backends
-    global backends_str = [String.(k)[1] for k in keys.(benchmarks)]
+    backends_str = [String.(k)[1] for k in keys.(benchmarks)]
     speedup_base_idx = findfirst(x->x==speedup_base, backends_str)
     log2p_str = [String.(keys(benchmarks[i][backend_str])) for (i, backend_str) in enumerate(backends_str)]
     length(unique(log2p_str)) != 1 && @error "Case sizes missmatch."
@@ -56,8 +56,7 @@ for (i, case) in enumerate(cases_ordered)
     # Get data for PrettyTables
     header = ["Backend", "WaterLily", "Julia", "Precision", "Allocations", "GC [%]", "Time [s]", "Cost [ns/DOF/dt]", "Speed-up"]
     data, base_speedup = Matrix{Any}(undef, length(benchmarks), length(header)), 1.0
-    # plotting_dir := Dict[("WaterLily version", "Julia version", "precision")][log2p, backend, {3}] # times, cost, speedups
-    global plotting_dict = Dict{NTuple, Array{Float64}}()
+    plotting_data = zeros(length(log2p_str), length(unique(backends_str)), 3) # times, cost, speedups
 
     printstyled("Benchmark environment: $case $f_test (max_steps=$(benchmarks[1].tags[4]))\n", bold=true)
     for (k, n) in enumerate(log2p_str)
@@ -76,9 +75,7 @@ for (i, case) in enumerate(cases_ordered)
                 datap.allocs, (datap.gctimes[1] / datap.times[1]) * 100.0, datap.times[1] / 1e9, cost, speedup]
             versions_key = (waterlily_ref, benchmark.tags[end], benchmark.tags[end-3])
             backend_idx = findall(x -> x == backends_str[i], unique(backends_str))[1]
-            !(versions_key in keys(plotting_dict)) &&
-                (plotting_dict[versions_key] = zeros(length(log2p_str), length(unique(backends_str)), 3))
-            plotting_dict[versions_key][k, backend_idx, :] = data[i, end-2:end]
+            plotting_data[k, backend_idx, :] .= data[i, end-2:end]
         end
         sorted_cond, sorted_idx = 0 < sort_idx <= length(header), nothing
         if sorted_cond
@@ -106,43 +103,48 @@ for (i, case) in enumerate(cases_ordered)
         unique_backends_str = unique(backends_str)
         backends_sort_idxs = sortperm(unique_backends_str, by=length)
         sort!(unique_backends_str, by=length)
+
+        plotting_keys = Dict{Int, NTuple}(k => Tuple(data[k, 2:4]) for k in axes(data, 1))
+        versions_key = unique.(collect(zip(values(plotting_keys)...))) |> x->reduce(vcat, x) |> x->join(x, '_')
+        data_plot = plotting_data[:, backends_sort_idxs, :]
+
         cg = cgrad(backend_color, length(unique_backends_str), categorical=true)
         colors = [c for c in cg.colors]
 
-        for (k, data_plot) in plotting_dict
-            data_plot .= data_plot[:, backends_sort_idxs, :]
-            versions_key = join(k, '_')
-            # Cost plot
-            p_cost = plot()
-            for (i, bstr) in enumerate(unique_backends_str)
-                scatter!(p_cost, N./1e6, data_plot[:, i, 2], label=unique_backends_str[i], ms=10, ma=1, color=colors[i])
-            end
-            scatter!(p_cost, yaxis=:log10, xaxis=:log10, yminorgrid=true, xminorgrid=true,
-                ylims=(1, 1000), xlims=(0.1, 600),
-                xlabel="DOF [M]", lw=0, framestyle=:box, grid=:xy, size=(600, 600),
-                left_margin=Plots.Measures.Length(:mm, 5), right_margin=Plots.Measures.Length(:mm, 5),
-                ylabel="Cost [ns/DOF/dt]", title=tests_dets[case]["title"], legend=:topright,
-                background_color_legend = RGBA{Float64}(1, 1, 1, 0.5)
-            )
-            fancylogscale!(p_cost)
-            savefig(p_cost, joinpath(string(@__DIR__), plot_dir, "$(case)_cost_$(versions_key).pdf"))
-
-            # Speedup plot
-            groups = repeat(N_str, inner=length(unique_backends_str)) |> CategoricalArray
-            levels!(groups, N_str)
-            ctg = repeat(unique_backends_str, outer=length(log2p_str)) |> CategoricalArray
-            levels!(ctg, unique_backends_str)
-            p = annotated_groupedbar(groups, transpose(data_plot[:, :, 1]), ctg;
-                series_annotations=vec(transpose(data_plot[:, :, 3])) .|> x -> @sprintf("%d", x) .|> latexstring, bar_width=0.92,
-                Dict(:xlabel=>"DOF [M]", :title=>tests_dets[case]["title"],
-                    :ylims=>(1e-1, 1e5), :lw=>0, :framestyle=>:box, :yaxis=>:log10, :grid=>true,
-                    :color=>reshape(colors, (1, length(unique_backends_str))),
-                    :size=>(600, 600)
-                )...
-            )
-            plot!(p, ylabel="Time [s]", legend=:topleft, background_color_legend = RGBA{Float64}(1, 1, 1, 0.5),
-                left_margin=Plots.Measures.Length(:mm, 0))
-            savefig(p, joinpath(string(@__DIR__), plot_dir, "$(case)_benchmark_$(versions_key).pdf"))
+        p_cost = plot()
+        for (i, bstr) in enumerate(unique_backends_str)
+            scatter!(p_cost, N./1e6, data_plot[:, i, 2], label=unique_backends_str[i], ms=10, ma=1, color=colors[i])
         end
+        scatter!(p_cost, yaxis=:log10, xaxis=:log10, yminorgrid=true, xminorgrid=true,
+            ylims=(1, 1000), xlims=(0.1, 600),
+            xlabel="DOF [M]", lw=0, framestyle=:box, grid=:xy, size=(600, 600),
+            left_margin=Plots.Measures.Length(:mm, 5), right_margin=Plots.Measures.Length(:mm, 5),
+            ylabel="Cost [ns/DOF/dt]", title=tests_dets[case]["title"], legend=false
+        )
+        i == 1 && scatter!(p_cost, legend=:bottomleft, background_color_legend = RGBA{Float64}(1, 1, 1, 0.7))
+        fancylogscale!(p_cost)
+        fig_path = joinpath(string(@__DIR__), plot_dir, "$(case)_cost_$(versions_key).pdf")
+        savefig(p_cost, fig_path)
+        println("Figure stored in $(fig_path)")
+
+        # Speedup plot
+        groups = repeat(N_str, inner=length(unique_backends_str)) |> CategoricalArray
+        levels!(groups, N_str)
+        ctg = repeat(unique_backends_str, outer=length(log2p_str)) |> CategoricalArray
+        levels!(ctg, unique_backends_str)
+        p = annotated_groupedbar(groups, transpose(data_plot[:, :, 1]), ctg;
+            series_annotations=vec(transpose(data_plot[:, :, 3])) .|> x -> @sprintf("%d", x) .|> latexstring, bar_width=0.92,
+            Dict(:xlabel=>"DOF [M]", :title=>tests_dets[case]["title"],
+                :ylims=>(1e-1, 1e5), :lw=>0, :framestyle=>:box, :yaxis=>:log10, :grid=>true,
+                :color=>reshape(colors, (1, length(unique_backends_str))),
+                :size=>(600, 600)
+            )...
+        )
+        plot!(p, ylabel="Time [s]", left_margin=Plots.Measures.Length(:mm, 0), legend=false)
+        i == 1 && plot!(p, legend=:topleft, background_color_legend = RGBA{Float64}(1, 1, 1, 0.7))
+
+        fig_path = joinpath(string(@__DIR__), plot_dir, "$(case)_benchmark_$(versions_key).pdf")
+        savefig(p, fig_path)
+        println("Figure stored in $(fig_path)")
     end
 end
