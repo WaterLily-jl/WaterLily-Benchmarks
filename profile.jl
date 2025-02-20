@@ -65,7 +65,7 @@ else # postprocess profiling
     kernel_weighted_time = kernel_weighted_time[sortidx]
     cg = cgrad(:darktest, length(kernels)-2, categorical=true)
     colors = [c for c in cg.colors]
-    CairoMakie.with_theme(theme_latexfonts(), fontsize=32, figure_padding=1) do
+    CairoMakie.with_theme(theme_latexfonts(), fontsize=30, figure_padding=0) do
         fig, ax, plt = CairoMakie.pie(
             kernel_weighted_time,
             color = colors,
@@ -73,11 +73,10 @@ else # postprocess profiling
             inner_radius = 0.6 ,
             strokecolor = :white,
             strokewidth = 1,
-            axis = (aspect = AxisAspect(1), autolimitaspect = 1),
+            axis = (aspect=AxisAspect(1), autolimitaspect=1),
         )
-        fig.scene.theme[:figure_padding] = 1
+        fig.scene.theme[:figure_padding] = 0
         hidedecorations!(ax); hidespines!(ax)
-        # colorbar
         if case == "cylinder"
             nc = length(kernel_weighted_time)
             cbar = Colorbar(fig[1,2], colormap=cg)

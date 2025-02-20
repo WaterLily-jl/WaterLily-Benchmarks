@@ -119,7 +119,7 @@ for (i, case) in enumerate(cases_ordered)
         scatter!(p_cost, yaxis=:log10, xaxis=:log10, yminorgrid=true, xminorgrid=true,
             ylims=(1, 1000), xlims=(0.1, 600),
             xlabel="DOF [M]", lw=0, framestyle=:box, grid=:xy, size=(600, 600),
-            left_margin=Plots.Measures.Length(:mm, 5), right_margin=Plots.Measures.Length(:mm, 5),
+            left_margin=Plots.Measures.Length(:mm, 0), # right_margin=Plots.Measures.Length(:mm, 0),
             ylabel="Cost [ns/DOF/dt]", legend=false #, title=tests_dets[case]["title"]
         )
         # i == 1 && scatter!(p_cost, legend=:bottomleft, background_color_legend = RGBA{Float64}(1, 1, 1, 0.7))
