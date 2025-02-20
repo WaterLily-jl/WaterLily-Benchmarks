@@ -120,9 +120,9 @@ for (i, case) in enumerate(cases_ordered)
             ylims=(1, 1000), xlims=(0.1, 600),
             xlabel="DOF [M]", lw=0, framestyle=:box, grid=:xy, size=(600, 600),
             left_margin=Plots.Measures.Length(:mm, 5), right_margin=Plots.Measures.Length(:mm, 5),
-            ylabel="Cost [ns/DOF/dt]", title=tests_dets[case]["title"], legend=false
+            ylabel="Cost [ns/DOF/dt]", legend=false #, title=tests_dets[case]["title"]
         )
-        i == 1 && scatter!(p_cost, legend=:bottomleft, background_color_legend = RGBA{Float64}(1, 1, 1, 0.7))
+        # i == 1 && scatter!(p_cost, legend=:bottomleft, background_color_legend = RGBA{Float64}(1, 1, 1, 0.7))
         fancylogscale!(p_cost)
         fig_path = joinpath(string(@__DIR__), plot_dir, "$(case)_cost_$(versions_key).pdf")
         savefig(p_cost, fig_path)
@@ -135,7 +135,7 @@ for (i, case) in enumerate(cases_ordered)
         levels!(ctg, unique_backends_str)
         p = annotated_groupedbar(groups, transpose(data_plot[:, :, 1]), ctg;
             series_annotations=vec(transpose(data_plot[:, :, 3])) .|> x -> @sprintf("%d", x) .|> latexstring, bar_width=0.92,
-            Dict(:xlabel=>"DOF [M]", :title=>tests_dets[case]["title"],
+            Dict(:xlabel=>"DOF [M]", # :title=>tests_dets[case]["title"],
                 :ylims=>(1e-1, 1e5), :lw=>0, :framestyle=>:box, :yaxis=>:log10, :grid=>true,
                 :color=>reshape(colors, (1, length(unique_backends_str))),
                 :size=>(600, 600)

@@ -65,7 +65,7 @@ else # postprocess profiling
     kernel_weighted_time = kernel_weighted_time[sortidx]
     cg = cgrad(:darktest, length(kernels)-2, categorical=true)
     colors = [c for c in cg.colors]
-    CairoMakie.with_theme(theme_latexfonts(), fontsize=25, figure_padding=1) do
+    CairoMakie.with_theme(theme_latexfonts(), fontsize=32, figure_padding=1) do
         fig, ax, plt = CairoMakie.pie(
             kernel_weighted_time,
             color = colors,

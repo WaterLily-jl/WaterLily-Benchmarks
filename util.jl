@@ -68,8 +68,8 @@ _rocm && (using AMDGPU: ROCArray; backend_str[ROCArray] = "GPU-AMD")
 # Plotting utils
 using Plots
 
-fontsize = 14
-speedup_fontsize = 14
+fontsize = 20
+speedup_fontsize = 16
 Plots.default(
     fontfamily = "Computer Modern",
     linewidth = 1,
@@ -187,9 +187,9 @@ function annotated_groupedbar(xx, yy, group; series_annotations="", bar_width=1.
     x2 = [xt[i] + (j - m/2 - 0.4)*dx for j in 1:m, i in 1:n][:]
     k = 1
     for i in 1:n, j in 1:m
-        y0 = gp[1][2j][:y][i]*1.3# + 0.04*dy
+        y0 = gp[1][2j][:y][i]*1.4# + 0.04*dy
         if isfinite(y0)
-            annotate!(x2[(i-1)*m + j]*1.01, y0, text(series_annotations[k], :center, :black, speedup_fontsize))
+            annotate!(x2[(i-1)*m + j]*1.02, y0, text(series_annotations[k], :center, :black, speedup_fontsize))
             k += 1
         end
     end
