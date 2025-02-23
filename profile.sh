@@ -1,7 +1,7 @@
 #!/bin/bash
 ## Usage example with --run=0: postproc only, --run=1: run only, --run=2: run and postproc
 
-## sh profile.sh -c "tgv sphere cylinder" -p "8 5 6" -s 1000 -r 1
+## sh profile.sh -ns "nsys ncu" -c "tgv sphere cylinder" -p "8 5 6" -s 1000 -r 1
 
 THIS_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
@@ -28,17 +28,23 @@ update_environment () {
     echo "Updating environment to Julia $version"
     julia --project=$THIS_DIR -e "using Pkg; Pkg.develop(PackageSpec(path=get(ENV, \"WATERLILY_DIR\", \"\"))); Pkg.update();"
 }
-## Run profiling
-run_profiling () {
+## Run profiling nsys
+run_profiling_nsys () {
     full_args=(--project=${THIS_DIR} --startup-file=no $args)
-    echo "Running profiling: nsys profile --sample=none --trace=nvtx,cuda --output=$DATA_DIR/$case/$case.nsys-rep --export=sqlite --force-overwrite=true julia ${full_args[@]}"
+    echo "Running NSYS profiling: nsys profile --sample=none --trace=nvtx,cuda --output=$DATA_DIR/$case/$case.nsys-rep --export=sqlite --force-overwrite=true julia ${full_args[@]}"
     nsys profile --sample=none --trace=nvtx,cuda --output=$DATA_DIR/$case/$case.nsys-rep --export=sqlite --force-overwrite=true julia "${full_args[@]}"
 }
 ## Run postprocessing
-run_postprocessing () {
+run_postprocessing_nsys () {
     full_args=(--project=${THIS_DIR} --startup-file=no $args)
     echo "Running postprocessing: julia ${full_args[@]}"
     julia "${full_args[@]}"
+}
+## Run profiling ncu
+run_profiling_ncu () {
+    full_args=(--project=${THIS_DIR} --startup-file=no $args)
+    echo "Running NCU profiling: ncu --set full --kernel-name "gpu___kern__$kernel" --launch-skip 200 --launch-count 100 -o $DATA_DIR/$case/$kernel -f julia ${full_args[@]}"
+    ncu --set full --kernel-name "gpu___kern__$kernel" --launch-skip 200 --launch-count 100 -o $DATA_DIR/$case/$kernel -f julia ${full_args[@]}
 }
 ## Print benchamrks info
 display_info () {
@@ -46,7 +52,7 @@ display_info () {
     echo "Running profiling tests for:
  - WaterLily:     ${WL_VERSIONS[@]}
  - WaterLily dir: $WATERLILY_DIR
- - Profiling dir: $DATA_DIR
+ - Data dir:      $DATA_DIR
  - Julia:         $VERSION
  - Backends:      $BACKEND
  - Cases:         ${CASES[@]}
@@ -54,18 +60,21 @@ display_info () {
  - Sim. steps:    $MAXSTEPS
  - Data type:     $FTYPE
  - File:          $FILE
- - Run:           $RUN"
+ - Profiling:     ${NSIGHT[@]}
+ - Kernels:       ${KERNELS[@]}"
     echo "--------------------------------------"; echo
 }
 
 ## Default backends
 WL_DIR=""
-DATA_DIR="data/profiling/"
-PLOT_DIR="plots/profiling/"
+DATA_DIR="data/profiling"
+PLOT_DIR="plots/profiling"
 WL_VERSIONS='profiling'
 JULIA_USER_VERSION=$(julia_version)
 VERSION=$JULIA_USER_VERSION
 BACKEND='CuArray'
+NSIGHT=('nsys')
+KERNELS=()
 ## Default cases. Arrays below must be same length (specify each case individually)
 CASES=() # ('tgv' 'sphere' 'cylinder')
 LOG2P=() # ('8' '5' '6')
@@ -125,6 +134,14 @@ case "$1" in
     PLOT_DIR=($2)
     shift
     ;;
+    --nsight|-ns)
+    NSIGHT=($2)
+    shift
+    ;;
+    --kernels|-k)
+    KERNELS=($2)
+    shift
+    ;;
     *)
     printf "ERROR: Invalid argument %s\n" "${1}" 1>&2
     exit 1
@@ -181,15 +198,27 @@ args_cases="--backend=$BACKEND --max_steps=$MAXSTEPS --ftype=$FTYPE --data_dir=$
 for ((i = 0; i < ${#CASES[@]}; ++i)); do
     case=${CASES[$i]}
     mkdir -p $DATA_DIR/$case
-    if [ $RUN -gt 0 ]; then
-        args="${THIS_DIR}/${FILE} --case=$case --log2p=${LOG2P[$i]} $args_cases --run=1"
-        run_profiling
+    if printf '%s\0' "${NSIGHT[@]}" | grep -Fxqz -- 'nsys'; then
+        if [ $RUN -gt 0 ]; then
+            args="${THIS_DIR}/${FILE} --case=$case --log2p=${LOG2P[$i]} $args_cases --run=1"
+            run_profiling_nsys
+        fi
+        if [ $RUN -ne 1 ]; then
+            args="${THIS_DIR}/${FILE} --case=$case --log2p=${LOG2P[$i]} $args_cases --run=0"
+            run_postprocessing_nsys
+        fi
     fi
-    if [ $RUN -ne 1 ]; then
-        args="${THIS_DIR}/${FILE} --case=$case --log2p=${LOG2P[$i]} $args_cases --run=0"
-        run_postprocessing
+    if printf '%s\0' "${NSIGHT[@]}" | grep -Fxqz -- 'ncu'; then
+            if (( ${#KERNELS[@]} != 0 )); then
+            args="${THIS_DIR}/${FILE} --case=$case --log2p=${LOG2P[$i]} $args_cases --run=1"
+            for kernel in "${KERNELS[@]}" ; do
+                run_profiling_ncu
+            done
+        else
+            printf "NCU profiling requested, but no kernels were passed. Use -k or --kernels to pass the list of kernels to profile."
+            exit 1
+        fi
     fi
 done
-
 echo "All done!"
 exit 0
