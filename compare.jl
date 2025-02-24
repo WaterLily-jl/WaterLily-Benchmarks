@@ -120,9 +120,9 @@ for (i, case) in enumerate(cases_ordered)
             ylims=(1, 1000), xlims=(0.1, 600),
             xlabel="DOF [M]", lw=0, framestyle=:box, grid=:xy, size=(600, 600),
             left_margin=Plots.Measures.Length(:mm, 0), # right_margin=Plots.Measures.Length(:mm, 0),
-            ylabel="Cost [ns/DOF/dt]", legend=false #, title=tests_dets[case]["title"]
+            legend=false #, title=tests_dets[case]["title"]
         )
-        # i == 1 && scatter!(p_cost, legend=:bottomleft, background_color_legend = RGBA{Float64}(1, 1, 1, 0.7))
+        i == 1 && scatter!(p_cost, ylabel="Cost [ns/DOF/dt]")
         fancylogscale!(p_cost)
         fig_path = joinpath(string(@__DIR__), plot_dir, "$(case)_cost_$(versions_key).pdf")
         savefig(p_cost, fig_path)
@@ -141,8 +141,8 @@ for (i, case) in enumerate(cases_ordered)
                 :size=>(600, 600)
             )...
         )
-        plot!(p, ylabel="Time [s]", left_margin=Plots.Measures.Length(:mm, 0), legend=false)
-        i == 1 && plot!(p, legend=:topleft, background_color_legend = RGBA{Float64}(1, 1, 1, 0.7))
+        plot!(p, left_margin=Plots.Measures.Length(:mm, 0), legend=false)
+        i == 1 && plot!(p, legend=:topleft, background_color_legend = RGBA{Float64}(1, 1, 1, 0.7), ylabel="Time [s]")
 
         fig_path = joinpath(string(@__DIR__), plot_dir, "$(case)_benchmark_$(versions_key).pdf")
         savefig(p, fig_path)
