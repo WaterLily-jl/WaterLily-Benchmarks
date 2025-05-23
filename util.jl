@@ -9,6 +9,7 @@ arg_value(arg, args) = split(args[iarg(arg, args)], "=")[end]
 metaparse(x) = eval(Meta.parse(x))
 parsepatterns(x) = replace(x,","=>("\",\""),"["=>("[\""),"]"=>("\",]"),",,]"=>("\",]"))
 getf(str) = eval(Symbol(str))
+parsestringlist(x) = filter(!isempty, occursin(',',x) ? split(x,',') : split(x,' '))  .|> x -> filter(x -> !isspace(x), x)
 
 function parse_cla(args; cases=["tgv"], log2p=[(6,7)], max_steps=[100], ftype=[Float32], backend=Array, data_dir="data/")
     cases = !isnothing(iarg("cases", args)) ? arg_value("cases", args) |> metaparse : cases
