@@ -51,6 +51,8 @@ function find_git_ref(hash)
     end
     return hash
 end
+find_git_hash(ref) = read(`git -C $waterlily_dir rev-parse --short $ref`, String) |> x -> strip(x, '\n')
+is_git_hash(hash) = find_git_ref(hash) == hash
 hostname = gethostname()
 
 backend_str = Dict(Array => "CPUx"*@sprintf("%.2d", Threads.nthreads()))
