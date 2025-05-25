@@ -7,7 +7,6 @@ iarg(arg, args) = occursin.(arg, args) |> findfirst
 arg_value(arg) = split(ARGS[iarg(arg)], "=")[end]
 arg_value(arg, args) = split(args[iarg(arg, args)], "=")[end]
 metaparse(x) = eval(Meta.parse(x))
-parsepatterns(x) = replace(x,","=>("\",\""),"["=>("[\""),"]"=>("\",]"),",,]"=>("\",]"))
 getf(str) = eval(Symbol(str))
 parsestringlist(x) = filter(!isempty, occursin(',',x) ? split(x,',') : split(x,' '))  .|> x -> filter(x -> !isspace(x), x)
 
@@ -207,10 +206,11 @@ function rdir(dir, patterns)
     for (root, _, files) in walkdir(dir)
         fpaths = joinpath.(root, files)
         length(fpaths) == 0 && continue
-        matches = length(patterns) > 0 ? [filter(x -> occursin(p, x), fpaths) for p in patterns] : fpaths
-        push!(results, vcat(matches...)...)
+        for p in patterns
+            push!(results,fpaths[occursin.(Ref(p),fpaths)]...)
+        end
     end
-    results
+    return unique(results)
 end
 
 # Benchmark and sizes
