@@ -12,7 +12,7 @@ backend_color = !isnothing(iarg("backend_color", ARGS)) ? arg_value("backend_col
 sort_idx = !isnothing(iarg("sort", ARGS)) ? arg_value("sort", ARGS) |> metaparse : 0
 plot_dir = !isnothing(iarg("plot_dir", ARGS)) ? arg_value("plot_dir", ARGS) : nothing
 data_dir = !isnothing(iarg("data_dir", ARGS)) ? arg_value("data_dir", ARGS) : "data/benchmark"
-patterns = !isnothing(iarg("patterns", ARGS)) ? arg_value("patterns", ARGS) |> parsepatterns |> metaparse : [""]
+patterns = !isnothing(iarg("patterns", ARGS)) ? arg_value("patterns", ARGS) |> parsestringlist : [""]
 patterns = patterns[end] == "" ? patterns[1:end-1] : patterns
 benchmarks_list = nothing
 !isnothing(plot_dir) &&  mkpath(plot_dir)
@@ -37,9 +37,10 @@ benchmarks_all_dict = Dict(Pair{String, Vector{BenchmarkGroup}}(k, []) for k in 
 for b in benchmarks_all
     push!(benchmarks_all_dict[b.tags[1]], b)
 end
-
 # Separate benchmarks by test case and order them
 cases_ordered = all_cases[filter(x -> !isnothing(x),[findfirst(x->x==1, contains.(p, all_cases)) for p in patterns])]
+# cases_ordered = all_cases[union((occursin.(Ref(p),benchmarks_list) for p in patterns)...)]
+
 if length(cases_ordered) == 0 # No case order specified, follow order above
     cases_ordered = all_cases[any.(contains.(benchmarks_list, c) for c in all_cases)]
 end
@@ -47,14 +48,15 @@ end
 # Table and plots
 for (i, case) in enumerate(cases_ordered)
     benchmarks = benchmarks_all_dict[case]
-    backends_str = [String.(k)[1] for k in keys.(benchmarks)]
     if !isnothing(speedup_base)
         speedup_base_idx = findfirst(
             x->length(intersect([x.tags...,find_git_ref(x.tags[end-1])],speedup_base))==length(speedup_base), benchmarks
         )
+        isnothing(speedup_base_idx) && throw(error("Cannot find base speedup for $case."))
     else
         speedup_base_idx = 1
     end
+    backends_str = [String.(k)[1] for k in keys.(benchmarks)]
     speedup_base_backend = backends_str[speedup_base_idx]
     # Get backends string vector and assert same case sizes for the different backends
     log2p_str = [String.(keys(benchmarks[i][backend_str])) for (i, backend_str) in enumerate(backends_str)]
@@ -95,6 +97,7 @@ for (i, case) in enumerate(cases_ordered)
                 speedup_base_idx2 = findfirst(
                     x->length(intersect([x[1],x[2],x[3],find_git_hash(x[2])],speedup_base)) == length(speedup_base), eachrow(data)
                 )
+                isnothing(speedup_base_idx2) && throw(error("Cannot find base speedup for $case."))
             else
                 speedup_base_idx2 = 1
             end
