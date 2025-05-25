@@ -48,7 +48,13 @@ end
 for (i, case) in enumerate(cases_ordered)
     benchmarks = benchmarks_all_dict[case]
     backends_str = [String.(k)[1] for k in keys.(benchmarks)]
-    speedup_base_idx = !isnothing(speedup_base) ? findfirst(x->length(intersect(x.tags,speedup_base))==length(speedup_base), benchmarks) : 1
+    if !isnothing(speedup_base)
+        speedup_base_idx = findfirst(
+            x->length(intersect([x.tags...,find_git_ref(x.tags[end-1])],speedup_base))==length(speedup_base), benchmarks
+        )
+    else
+        speedup_base_idx = 1
+    end
     speedup_base_backend = backends_str[speedup_base_idx]
     # Get backends string vector and assert same case sizes for the different backends
     log2p_str = [String.(keys(benchmarks[i][backend_str])) for (i, backend_str) in enumerate(backends_str)]
@@ -85,8 +91,15 @@ for (i, case) in enumerate(cases_ordered)
             data .= data[sorted_idx, :]
         else
             data = sortslices(data,dims=1,by=x->(x[1],x[2]))
+            if !isnothing(speedup_base)
+                speedup_base_idx2 = findfirst(
+                    x->length(intersect([x[1],x[2],x[3],find_git_hash(x[2])],speedup_base)) == length(speedup_base), eachrow(data)
+                )
+            else
+                speedup_base_idx2 = 1
+            end
         end
-        hl_base = Highlighter(f=(data, i, j) -> sorted_cond ? i == findfirst(x->x==speedup_base_idx, sorted_idx) : i==speedup_base_idx,
+        hl_base = Highlighter(f=(data, i, j) -> sorted_cond ? i == findfirst(x->x==speedup_base_idx, sorted_idx) : i==speedup_base_idx2,
             crayon=Crayon(foreground=:blue))
         hl_per_backend = []
         for bkend in unique(backends_str)
