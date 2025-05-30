@@ -49,10 +49,12 @@ julia --project compare.jl benchmark_1.json benchmark_2.json benchmark_3.json ..
 ```
 or by using pattern syntax
 ```sh
-julia --project compare.jl --data_dir="data/benchmark" --patterns=["tgv*CPU"]
+julia --project compare.jl --data_dir="data/benchmark" --patterns="tgv*CPU"
 ```
 for which only TGV benchmarks on a CPU backend found in the `"data"` directory would be processed. The following syntax would produce equivalent results:
 ```sh
 julia --project compare.jl $(find data/benchmark -name "tgv*CPU.json" -printf "%T@ %Tc %p\n" | sort -n | awk '{print $7}') --sort=1
 ```
-by taking the `tgv` JSON files, sort them by creation time, and pass them as arguments to the `compare.jl` program. Finally, `--speedup_base=<backend>` can be passed to reference speed-ups: `speedup_x = time(benchmark_<backend>) / time(benchmark_x)`. The `--sort=<1 to 9>` argument can also be used when running the comparison. It will sort the benchmark table rows by the values corresponding to the column index passed as argument. `--sort=1` corresponds to sorting by backend alphabetically. The speedup baseline row is highlighted in blue, and the fastest run in a table is highlighted in green. Last, a `--backend_color=<colorscheme>` can be passed to use a certain [color scheme](https://docs.juliaplots.org/dev/generated/colorschemes/) if plotting results (ie. passing the `--plot_dir=<plot_dir>` argument).
+by taking the `tgv` JSON files, sort them by creation time, and pass them as arguments to the `compare.jl` program. Multiple ppaterns can also be specified with `--patterns="tgv jelly"` for example.
+
+The `--speedup_base="<backend>,<waterlily hash/ref>,<julia version>"` argument (or a subset of it, ie. `"<backend>,<julia version>"`) can be passed to reference speed-ups: `speedup_x = time(benchmark_<backend>) / time(benchmark_x)`. The `--sort=<1 to 9>` argument can also be used when running the comparison. It will sort the benchmark table rows by the values corresponding to the column index passed as argument. `--sort=1` corresponds to sorting by backend alphabetically. The speedup baseline row is highlighted in blue, and the fastest run per backend is highlighted in green. Last, a `--backend_color=<colorscheme>` can be passed to use a certain [color scheme](https://docs.juliaplots.org/dev/generated/colorschemes/) if plotting results (ie. passing the `--plot_dir=<plot_dir>` argument).

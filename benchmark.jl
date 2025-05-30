@@ -8,7 +8,7 @@ function run_benchmarks(cases, log2p, max_steps, ftype, backend, bstr; data_dir=
         suite = BenchmarkGroup()
         results = BenchmarkGroup([case, "sim_step!", p, s, ft, bstr, git_hash, string(VERSION)])
         add_to_suite!(suite, getf(case); p=p, s=s, ft=ft, backend=backend, bstr=bstr,
-            remeasure=any(x->x==case, ["cylinder", "jelly"])
+            remeasure = any(x -> x==case, ["cylinder", "jelly"])
         ) # create benchmark
         results[bstr] = run(suite[bstr], samples=1, evals=1, seconds=1e6, verbose=true) # run!
         fname = "$(case)_$(p...)_$(s)_$(ft)_$(bstr)_$(git_hash)_$VERSION.json"

@@ -7,12 +7,12 @@ using BenchmarkTools, PrettyTables
 include("util.jl")
 
 # Parse CLA and load benchmarks
-speedup_base = !isnothing(iarg("speedup_base", ARGS)) ? arg_value("speedup_base", ARGS) : nothing
+speedup_base = !isnothing(iarg("speedup_base", ARGS)) ? arg_value("speedup_base", ARGS) |> parsestringlist : nothing
 backend_color = !isnothing(iarg("backend_color", ARGS)) ? arg_value("backend_color", ARGS) |> Symbol : :lightrainbow
 sort_idx = !isnothing(iarg("sort", ARGS)) ? arg_value("sort", ARGS) |> metaparse : 0
-plot_dir = !isnothing(iarg("plot_dir", ARGS)) ? arg_value("plot_dir", ARGS) : "plots/benchmark"
+plot_dir = !isnothing(iarg("plot_dir", ARGS)) ? arg_value("plot_dir", ARGS) : nothing
 data_dir = !isnothing(iarg("data_dir", ARGS)) ? arg_value("data_dir", ARGS) : "data/benchmark"
-patterns = !isnothing(iarg("patterns", ARGS)) ? arg_value("patterns", ARGS) |> parsepatterns |> metaparse : [""]
+patterns = !isnothing(iarg("patterns", ARGS)) ? arg_value("patterns", ARGS) |> parsestringlist : [""]
 patterns = patterns[end] == "" ? patterns[1:end-1] : patterns
 benchmarks_list = nothing
 !isnothing(plot_dir) &&  mkpath(plot_dir)
@@ -37,9 +37,10 @@ benchmarks_all_dict = Dict(Pair{String, Vector{BenchmarkGroup}}(k, []) for k in 
 for b in benchmarks_all
     push!(benchmarks_all_dict[b.tags[1]], b)
 end
-
 # Separate benchmarks by test case and order them
 cases_ordered = all_cases[filter(x -> !isnothing(x),[findfirst(x->x==1, contains.(p, all_cases)) for p in patterns])]
+# cases_ordered = all_cases[union((occursin.(Ref(p),benchmarks_list) for p in patterns)...)]
+
 if length(cases_ordered) == 0 # No case order specified, follow order above
     cases_ordered = all_cases[any.(contains.(benchmarks_list, c) for c in all_cases)]
 end
@@ -47,16 +48,24 @@ end
 # Table and plots
 for (i, case) in enumerate(cases_ordered)
     benchmarks = benchmarks_all_dict[case]
-    # Get backends string vector and assert same case sizes for the different backends
+    if !isnothing(speedup_base)
+        speedup_base_idx = findfirst(
+            x->length(intersect([x.tags...,find_git_ref(x.tags[end-1])],speedup_base))==length(speedup_base), benchmarks
+        )
+        isnothing(speedup_base_idx) && throw(error("Cannot find base speedup for $case."))
+    else
+        speedup_base_idx = 1
+    end
     backends_str = [String.(k)[1] for k in keys.(benchmarks)]
-    speedup_base_idx = findfirst(x->x==speedup_base, backends_str)
+    speedup_base_backend = backends_str[speedup_base_idx]
+    # Get backends string vector and assert same case sizes for the different backends
     log2p_str = [String.(keys(benchmarks[i][backend_str])) for (i, backend_str) in enumerate(backends_str)]
-    length(unique(log2p_str)) != 1 && @error "Case sizes missmatch."
+    length(unique(log2p_str)) != 1 && @error "Case sizes mismatch."
     log2p_str = sort(log2p_str[1])
     f_test = benchmarks[1].tags[2]
     # Get data for PrettyTables
     header = ["Backend", "WaterLily", "Julia", "Precision", "Allocations", "GC [%]", "Time [s]", "Cost [ns/DOF/dt]", "Speed-up"]
-    data, base_speedup = Matrix{Any}(undef, length(benchmarks), length(header)), 1.0
+    data = Matrix{Any}(undef, length(benchmarks), length(header))
     plotting_data = zeros(length(log2p_str), length(unique(backends_str)), 3) # times, cost, speedups
 
     printstyled("Benchmark environment: $case $f_test (max_steps=$(benchmarks[1].tags[4]))\n", bold=true)
@@ -65,7 +74,7 @@ for (i, case) in enumerate(cases_ordered)
         for (i, benchmark) in enumerate(benchmarks)
             datap = benchmark[backends_str[i]][n][f_test]
             if !isnothing(speedup_base)
-                speedup = benchmarks[speedup_base_idx][speedup_base][n][f_test].times[1] / datap.times[1]
+                speedup = benchmarks[speedup_base_idx][speedup_base_backend][n][f_test].times[1] / datap.times[1]
             else
                 speedup = i == 1 ? 1.0 : benchmarks[1][backends_str[1]][n][f_test].times[1] / datap.times[1]
             end
@@ -81,18 +90,29 @@ for (i, case) in enumerate(cases_ordered)
         sorted_cond, sorted_idx = 0 < sort_idx <= length(header), nothing
         if sorted_cond
             sorted_idx = sortperm(data[:, sort_idx])
-            baseline_idx = findfirst(x->x==1, sorted_idx)
             data .= data[sorted_idx, :]
-        end
-        if !isnothing(speedup_base)
-            hl_base = Highlighter(f=(data, i, j) -> sorted_cond ? i == findfirst(x->x==speedup_base_idx, sorted_idx) : i==speedup_base_idx,
-                crayon=Crayon(foreground=:blue))
         else
-            hl_base = Highlighter(f=(data, i, j) -> sorted_cond ? i == findfirst(x->x==1, sorted_idx) : i==1,
-                crayon=Crayon(foreground=:blue))
+            data = sortslices(data,dims=1,by=x->(x[1],x[2]))
+            if !isnothing(speedup_base)
+                speedup_base_idx2 = findfirst(
+                    x->length(intersect([x[1],x[2],x[3],find_git_hash(x[2])],speedup_base)) == length(speedup_base), eachrow(data)
+                )
+                isnothing(speedup_base_idx2) && throw(error("Cannot find base speedup for $case."))
+            else
+                speedup_base_idx2 = 1
+            end
         end
-        hl_fast = Highlighter(f=(data, i, j) -> i == argmin(data[:, end-1]), crayon=Crayon(foreground=(32,125,56)))
-        pretty_table(data; header=header, header_alignment=:c, highlighters=(hl_base, hl_fast), formatters=ft_printf("%.2f", [6,7,8,9]))
+        hl_base = Highlighter(f=(data, i, j) -> sorted_cond ? i == findfirst(x->x==speedup_base_idx, sorted_idx) : i==speedup_base_idx2,
+            crayon=Crayon(foreground=:blue))
+        hl_per_backend = []
+        for bkend in unique(backends_str)
+            idxs = findall(x->x[1]==bkend,eachrow(data))
+            min_indx = idxs[argmin(data[idxs,7])]
+            push!(hl_per_backend, Highlighter(f=(data, i, j) -> i == min_indx, crayon=Crayon(foreground=(32,125,56))))
+        end
+
+        # hl_fast = Highlighter(f=(data, i, j) -> i == argmin(data[:, end-1]), crayon=Crayon(foreground=(32,125,56)))
+        pretty_table(data; header=header, header_alignment=:c, highlighters=(hl_base, hl_per_backend...), formatters=ft_printf("%.2f", [6,7,8,9]))
     end
 
     # Plotting each configuration of WaterLily version, Julia version and precision in benchamarks

@@ -7,8 +7,8 @@ iarg(arg, args) = occursin.(arg, args) |> findfirst
 arg_value(arg) = split(ARGS[iarg(arg)], "=")[end]
 arg_value(arg, args) = split(args[iarg(arg, args)], "=")[end]
 metaparse(x) = eval(Meta.parse(x))
-parsepatterns(x) = replace(x,","=>("\",\""),"["=>("[\""),"]"=>("\",]"),",,]"=>("\",]"))
 getf(str) = eval(Symbol(str))
+parsestringlist(x) = filter(!isempty, occursin(',',x) ? split(x,',') : split(x,' '))  .|> x -> filter(x -> !isspace(x), x)
 
 function parse_cla(args; cases=["tgv"], log2p=[(6,7)], max_steps=[100], ftype=[Float32], backend=Array, data_dir="data/")
     cases = !isnothing(iarg("cases", args)) ? arg_value("cases", args) |> metaparse : cases
@@ -50,6 +50,8 @@ function find_git_ref(hash)
     end
     return hash
 end
+find_git_hash(ref) = read(`git -C $waterlily_dir rev-parse --short $ref`, String) |> x -> strip(x, '\n')
+is_git_hash(hash) = find_git_ref(hash) == hash
 hostname = gethostname()
 
 backend_str = Dict(Array => "CPUx"*@sprintf("%.2d", Threads.nthreads()))
@@ -204,10 +206,11 @@ function rdir(dir, patterns)
     for (root, _, files) in walkdir(dir)
         fpaths = joinpath.(root, files)
         length(fpaths) == 0 && continue
-        matches = length(patterns) > 0 ? [filter(x -> occursin(p, x), fpaths) for p in patterns] : fpaths
-        push!(results, vcat(matches...)...)
+        for p in patterns
+            push!(results,fpaths[occursin.(Ref(p),fpaths)]...)
+        end
     end
-    results
+    return unique(results)
 end
 
 # Benchmark and sizes
