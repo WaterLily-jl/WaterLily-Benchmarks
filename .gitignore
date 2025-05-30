@@ -1,5 +1,5 @@
 .vscode/
-# Manifest.toml
+Manifest.toml
 *.pdf
 *.json
 *.err
