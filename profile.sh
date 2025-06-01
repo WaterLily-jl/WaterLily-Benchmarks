@@ -1,7 +1,8 @@
 #!/bin/bash
 ## Usage example with --run=0: postproc only, --run=1: run only, --run=2: run and postproc
 
-## sh profile.sh -ns "nsys ncu" -c "tgv sphere cylinder" -p "8 5 6" -s 1000 -r 1
+## sh profile.sh -ns "nsys" -c "tgv sphere cylinder" -p "8 5 6" -s 1000 -r 1
+## sh profile.sh -ns "ncu" -k "327 355" -c "cylinder" -p "4,5,6" -s 20
 
 THIS_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
@@ -43,8 +44,17 @@ run_postprocessing_nsys () {
 ## Run profiling ncu
 run_profiling_ncu () {
     full_args=(--project=${THIS_DIR} --startup-file=no $args)
-    echo "Running NCU profiling: ncu --set full --kernel-name "gpu___kern__$kernel" --launch-skip 200 --launch-count 100 -o $DATA_DIR/$case/$kernel -f julia ${full_args[@]}"
-    ncu --set full --kernel-name "gpu___kern__$kernel" --launch-skip 200 --launch-count 100 -o $DATA_DIR/$case/$kernel -f julia ${full_args[@]}
+    echo "Running NCU profiling: ncu --set full --kernel-name regex:$kernels_reg --launch-skip 100 --launch-count 100 -o $DATA_DIR/$case/$kernels_o-p$pp -f julia ${full_args[@]}"
+    ncu --set full --kernel-name regex:$kernels_reg --launch-skip 100 --launch-count 100 -o $DATA_DIR/$case/$kernels_o-p$pp -f julia ${full_args[@]}
+}
+# Make a regex for the kernels
+join_with_pipe() {
+  arr=("$@")
+  echo "${arr// /|}"
+}
+join_with_underscore() {
+  arr=("$@")
+  echo "${arr// /_}"
 }
 ## Print benchamrks info
 display_info () {
@@ -209,9 +219,12 @@ for ((i = 0; i < ${#CASES[@]}; ++i)); do
         fi
     fi
     if printf '%s\0' "${NSIGHT[@]}" | grep -Fxqz -- 'ncu'; then
-            if (( ${#KERNELS[@]} != 0 )); then
-            args="${THIS_DIR}/${FILE} --case=$case --log2p=${LOG2P[$i]} $args_cases --run=1"
-            for kernel in "${KERNELS[@]}" ; do
+        if (( ${#KERNELS[@]} != 0 )); then
+            mapfile -t LOG2Ps < <(echo "${LOG2P[$i]}" | tr ',' '\n')
+            kernels_reg=$(join_with_pipe "${KERNELS[*]}")
+            kernels_o=$(join_with_underscore "${KERNELS[*]}")
+            for pp in "${LOG2Ps[@]}" ; do
+                args="${THIS_DIR}/${FILE} --case=$case --log2p=$pp $args_cases --run=1"
                 run_profiling_ncu
             done
         else
