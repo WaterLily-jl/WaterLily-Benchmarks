@@ -47,9 +47,9 @@ function donut(p, backend; Re=1e3, U=1, T=Float32)
 end
 
 function jelly(p, backend; Re=5e2, U=1, T=Float32)
-    n = 2^p; R = 2n/3; h = 4n - 2R; ν = U*R/Re
+    n = 2^p; R = T(2n/3); h = 4n - 2R; ν = U*R/Re
     ω = 2U/R
-    @fastmath @inline A(t) = 1 .- SA[1,1,0]*0.1*cos(ω*t)
+    @fastmath @inline A(t) = 1 .- SA[1,1,0]*cos(ω*t)/10
     @fastmath @inline B(t) = SA[0,0,1]*((cos(ω*t) - 1)*R/4-h)
     @fastmath @inline C(t) = SA[0,0,1]*sin(ω*t)*R/4
     sphere = AutoBody((x,t)->abs(√sum(abs2, x) - R) - 1,
