@@ -14,9 +14,9 @@ julia --project compare.jl
 ## Detailed usage example
 ```sh
 sh benchmark.sh -v "release 1.11" -t "1 4" -b "Array CuArray" -c "tgv jelly" -p "6,7 5,6" -s "100 100" -ft "Float32 Float64"
-julia --project compare.jl --data_dir="data" --plot_dir="plots" --patterns=["tgv","jelly"] --sort=1
+julia --project compare.jl --data_dir="data" --plot_dir="plots" --patterns="tgv jelly" --sort=1
 ```
-runs both the TGV and jelly benchmarks (`-c`) using the current WaterLily version available in `$WATERLILY_DIR`, using 2 different Julia versions (latest release version and latest 1.11, noting that these need to be available in juliaup), and 3 different backends (CPUx01, CPUx04, CUDA). Note that `$WATERLILY_DIR` needs to be available in the environmental variables, or otherwise the argument `-wd "my/waterlily/dir"` can be specified. The cases size `-p`, number of time steps `-s`, and float type `-ft` are bash (ordered) arrays which need to be equally sized to `-c` and specify each benchmark case (respectively).
+runs both the TGV and jelly benchmarks (`-c`) using the current WaterLily version available in `$WATERLILY_DIR`, using 2 different Julia versions (latest release version and latest 1.11, noting that these need to be available in juliaup), 3 different backends (CPUx01, CPUx04, CUDA). Note that `$WATERLILY_DIR` needs to be available in the environmental variables, or otherwise the argument `-wd "my/waterlily/dir"` can be specified. The cases size `-p`, number of time steps `-s`, and float type `-ft` are bash (ordered) arrays which need to be equally sized to `-c` and specify each benchmark case (respectively). In this example, the TGV case is run with Float32 precision and the jelly case in Float64.
 The default benchmarks launch (`sh benchmark.sh`) is equivalent to:
 ```sh
 sh benchmark.sh -wd "$WATERLILY_DIR" -w "" -v "release" -t "4" -b "Array CuArray" -c "tgv jelly" -p "6,7 5,6" -s "100 100" -ft "Float32 Float32"
@@ -51,7 +51,7 @@ or by using pattern syntax
 ```sh
 julia --project compare.jl --data_dir="data/benchmark" --patterns="tgv*CPU"
 ```
-for which only TGV benchmarks on a CPU backend found in the `"data"` directory would be processed. The following syntax would produce equivalent results:
+for which only TGV benchmarks on a CPU backend found in the `"data/benchmark"` directory would be processed. The following syntax would produce equivalent results:
 ```sh
 julia --project compare.jl $(find data/benchmark -name "tgv*CPU.json" -printf "%T@ %Tc %p\n" | sort -n | awk '{print $7}') --sort=1
 ```
