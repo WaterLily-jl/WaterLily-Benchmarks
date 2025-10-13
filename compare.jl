@@ -12,7 +12,7 @@ backend_color = !isnothing(iarg("backend_color", ARGS)) ? arg_value("backend_col
 sort_idx = !isnothing(iarg("sort", ARGS)) ? arg_value("sort", ARGS) |> metaparse : 0
 plot_dir = !isnothing(iarg("plot_dir", ARGS)) ? arg_value("plot_dir", ARGS) : nothing
 data_dir = !isnothing(iarg("data_dir", ARGS)) ? arg_value("data_dir", ARGS) : "data/benchmark"
-patterns = !isnothing(iarg("patterns", ARGS)) ? arg_value("patterns", ARGS) |> parsestringlist : [""]
+patterns = !isnothing(iarg("patterns", ARGS)) ? arg_value("patterns", ARGS) |> parsestringlist : all_cases
 patterns = patterns[end] == "" ? patterns[1:end-1] : patterns
 benchmarks_list = nothing
 !isnothing(plot_dir) &&  mkpath(plot_dir)
@@ -40,10 +40,10 @@ end
 # Separate benchmarks by test case and order them
 cases_ordered = all_cases[filter(x -> !isnothing(x),[findfirst(x->x==1, contains.(p, all_cases)) for p in patterns])]
 # cases_ordered = all_cases[union((occursin.(Ref(p),benchmarks_list) for p in patterns)...)]
-
 if length(cases_ordered) == 0 # No case order specified, follow order above
     cases_ordered = all_cases[any.(contains.(benchmarks_list, c) for c in all_cases)]
 end
+cases_ordered = [x for x in cases_ordered if any(occursin.(Ref(x), benchmarks_list))]
 
 # Table and plots
 for (i, case) in enumerate(cases_ordered)
@@ -102,17 +102,19 @@ for (i, case) in enumerate(cases_ordered)
                 speedup_base_idx2 = 1
             end
         end
-        hl_base = Highlighter(f=(data, i, j) -> sorted_cond ? i == findfirst(x->x==speedup_base_idx, sorted_idx) : i==speedup_base_idx2,
-            crayon=Crayon(foreground=:blue))
+        hl_base = TextHighlighter(
+            (data, i, j) -> sorted_cond ? i == findfirst(x->x==speedup_base_idx, sorted_idx) : i==speedup_base_idx2,
+            crayon"fg:blue"
+        )
         hl_per_backend = []
         for bkend in unique(backends_str)
             idxs = findall(x->x[1]==bkend,eachrow(data))
             min_indx = idxs[argmin(data[idxs,7])]
-            push!(hl_per_backend, Highlighter(f=(data, i, j) -> i == min_indx, crayon=Crayon(foreground=(32,125,56))))
+            push!(hl_per_backend, TextHighlighter((data, i, j) -> i == min_indx, Crayon(foreground=(32,125,56))))
         end
 
-        # hl_fast = Highlighter(f=(data, i, j) -> i == argmin(data[:, end-1]), crayon=Crayon(foreground=(32,125,56)))
-        pretty_table(data; header=header, header_alignment=:c, highlighters=(hl_base, hl_per_backend...), formatters=ft_printf("%.2f", [6,7,8,9]))
+        # hl_fast = TextHighlighter(f=(data, i, j) -> i == argmin(data[:, end-1]), crayon=Crayon(foreground=(32,125,56)))
+        pretty_table(data; backend=:text, column_labels=header, highlighters=[hl_base, hl_per_backend...], formatters = [fmt__printf("%.2f", [6,7,7,8,9])])
     end
 
     # Plotting each configuration of WaterLily version, Julia version and precision in benchamarks
