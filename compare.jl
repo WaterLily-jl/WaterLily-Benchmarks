@@ -114,7 +114,7 @@ for (i, case) in enumerate(cases_ordered)
         end
 
         # hl_fast = TextHighlighter(f=(data, i, j) -> i == argmin(data[:, end-1]), crayon=Crayon(foreground=(32,125,56)))
-        pretty_table(data; backend=:text, column_labels=header, highlighters=[hl_base, hl_per_backend...], formatters = [fmt__printf("%.2f", [6,7,7,8,9])])
+        pretty_table(data; backend=:text, column_labels=header, highlighters=[hl_base, hl_per_backend...], formatters = [fmt__printf("%.2f", [6,7,8,9])])
     end
 
     # Plotting each configuration of WaterLily version, Julia version and precision in benchamarks
