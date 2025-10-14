@@ -37,16 +37,10 @@ benchmarks_all_dict = Dict(Pair{String, Vector{BenchmarkGroup}}(k, []) for k in 
 for b in benchmarks_all
     push!(benchmarks_all_dict[b.tags[1]], b)
 end
-# Separate benchmarks by test case and order them
-cases_ordered = all_cases[filter(x -> !isnothing(x),[findfirst(x->x==1, contains.(p, all_cases)) for p in patterns])]
-# cases_ordered = all_cases[union((occursin.(Ref(p),benchmarks_list) for p in patterns)...)]
-if length(cases_ordered) == 0 # No case order specified, follow order above
-    cases_ordered = all_cases[any.(contains.(benchmarks_list, c) for c in all_cases)]
-end
-cases_ordered = [x for x in cases_ordered if any(occursin.(Ref(x), benchmarks_list))]
+cases = [x for x in all_cases if any(occursin.(Ref(x), benchmarks_list))]
 
 # Table and plots
-for (i, case) in enumerate(cases_ordered)
+for (i, case) in enumerate(cases)
     benchmarks = benchmarks_all_dict[case]
     if !isnothing(speedup_base)
         speedup_base_idx = findfirst(
