@@ -61,9 +61,9 @@ git_checkout () {
 
 local_preferences () {
     if [[ $backend == "Array" && $thread == 1 ]]; then
-        printf "[WaterLily]\nbackend = \"SIMD\"" > LocalPreferences.toml
+        printf "[WaterLily]\nbackend = \"SIMD\"\n" > LocalPreferences.toml
     else
-        printf "[WaterLily]\nbackend = \"KernelAbstractions\"" > LocalPreferences.toml
+        printf "[WaterLily]\nbackend = \"KernelAbstractions\"\n" > LocalPreferences.toml
     fi
 }
 
@@ -191,7 +191,7 @@ fi
 # Check WATERLILY_DIR is set and functional
 if [ -z $WL_DIR ]; then # --waterlily-dir argument not passed
     if [ -z $WATERLILY_DIR ]; then # WATERLILY_DIR not set
-        printf "WATERLILY_DIR environmental variable must be set.\nEither export it globally or pass it using: --waterlily-dir=foo/bar/"
+        printf "WATERLILY_DIR environmental variable must be set.\nEither export it globally or pass it using: --waterlily-dir=foo/bar/\n"
         exit 1
     fi
 else
@@ -213,7 +213,7 @@ fi
 # Check if Julia versions have been specified, and if so check that juliaup is installed
 if (( ${#VERSIONS[@]} != 0 )); then
     if ! check_if_juliaup; then
-        printf "Versions ${WL_VERSIONS[@]} were requested, but juliaup is not found."
+        printf "Versions ${WL_VERSIONS[@]} were requested, but juliaup is not found.\n"
         exit 1
     fi
     DEFAULT_VERSION=1
