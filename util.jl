@@ -34,7 +34,7 @@ function add_to_suite!(suite, sim_function; p=(3,4,5), s=100, ft=Float32, backen
     suite[bstr] = BenchmarkGroup([bstr])
     for n in p
         sim = sim_function(n, backend; T=ft)
-        sim_step!(sim, typemax(ft); max_steps=5, verbose=false, remeasure=remeasure) # warm up
+        sim_step!(sim, typemax(ft); max_steps=20, verbose=false, remeasure=remeasure) # warm up
         suite[bstr][repr(n)] = BenchmarkGroup([repr(n)])
         KA_backend = KernelAbstractions.get_backend(sim.flow.p)
         @add_benchmark sim_step!($sim, $typemax($ft); max_steps=$s, verbose=false, remeasure=$remeasure) $KA_backend suite[bstr][repr(n)] "sim_step!"
