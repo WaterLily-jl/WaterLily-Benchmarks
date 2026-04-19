@@ -15,13 +15,13 @@ julia --project compare.jl
 
 ## Detailed usage example
 ```sh
-sh benchmark.sh -v "release 1.11" -t "1 4" -b "Array CuArray" -c "tgv jelly" -p "6,7 5,6" -s "100 100" -ft "Float32 Float64"
+sh benchmark.sh -v "release 1.11" -t "1 4" -b "Array CuArray" -c "tgv jelly" -p "6,7 5,6" -s "25 25" -ft "Float32 Float64"
 julia --project compare.jl --data_dir="data" --plot_dir="plots" --patterns="tgv jelly" --sort=1
 ```
 runs both the TGV and jelly benchmarks (`-c`) using the current WaterLily version available in `$WATERLILY_DIR`, using 2 different Julia versions (latest release version and latest 1.11, noting that these need to be available in juliaup), 3 different backends (CPUx01, CPUx04, CUDA). Note that `$WATERLILY_DIR` needs to be available in the environmental variables, or otherwise the argument `-wd "my/waterlily/dir"` can be specified. The cases size `-p`, number of time steps `-s`, and float type `-ft` are bash (ordered) arrays which need to be equally sized to `-c` and specify each benchmark case (respectively). In this example, the TGV case is run with Float32 precision and the jelly case in Float64.
 The default benchmarks launch (`sh benchmark.sh`) is equivalent to:
 ```sh
-sh benchmark.sh -wd "$WATERLILY_DIR" -w "" -v "release" -t "4" -b "Array CuArray" -c "tgv jelly" -p "6,7 5,6" -s "100 100" -ft "Float32 Float32"
+sh benchmark.sh -wd "$WATERLILY_DIR" -w "" -v "release" -t "4" -b "Array CuArray" -c "tgv jelly" -p "6,7 5,6" -s "25 25" -ft "Float32 Float32"
 ```
 Note that `-w` or `--waterlily` can be used to pass different WaterLily versions by using commit hashes, tags, or branch names, eg. `-w "master v1.2.0"`. An empty `-w` argument will benchmark the current state of `$WATERLILY_DIR`.
 
@@ -59,4 +59,16 @@ julia --project compare.jl $(find data/benchmark -name "tgv*CPU.json" -printf "%
 ```
 by taking the `tgv` JSON files, sort them by creation time, and pass them as arguments to the `compare.jl` program. Multiple ppaterns can also be specified with `--patterns="tgv jelly"` for example.
 
-The `--speedup_base="<backend>,<waterlily hash/ref>,<julia version>"` argument (or a subset of it, ie. `"<backend>,<julia version>"`) can be passed to reference speed-ups: `speedup_x = time(benchmark_<backend>) / time(benchmark_x)`. The `--sort=<1 to 9>` argument can also be used when running the comparison. It will sort the benchmark table rows by the values corresponding to the column index passed as argument. `--sort=1` corresponds to sorting by backend alphabetically. The speedup baseline row is highlighted in blue, and the fastest run per backend is highlighted in green. Last, a `--backend_color=<colorscheme>` can be passed to use a certain [color scheme](https://docs.juliaplots.org/dev/generated/colorschemes/) if plotting results (ie. passing the `--plot_dir=<plot_dir>` argument).
+The `--speedup_base="<backend>,<waterlily hash/ref>,<julia version>"` argument (or a subset of it, ie. `"<backend>,<julia version>"`) can be passed to reference speed-ups: `speedup_x = time(benchmark_<backend>) / time(benchmark_x)`. The `--sort=<1 to 11>` argument can also be used when running the comparison. It will sort the benchmark table rows by the values corresponding to the column index passed as argument. `--sort=1` corresponds to sorting by backend alphabetically; `--sort=7` sorts by minimum time; `--sort=11` sorts by speedup. The speedup baseline row is highlighted in blue, and the fastest run per backend is highlighted in green. Last, a `--backend_color=<colorscheme>` can be passed to use a certain [color scheme](https://docs.juliaplots.org/dev/generated/colorschemes/) if plotting results (ie. passing the `--plot_dir=<plot_dir>` argument).
+
+## Measurement methodology
+
+Each benchmark runs `sim_step!` for `max_steps` iterations (default `25`) as a single `evals=1` unit, then repeats that unit `samples=5` times. The reported table shows:
+
+- **Min [s]**: minimum across samples — used as the robust point estimate (insensitive to OS jitter / GC) for speedup and cost-per-DOF.
+- **Med [s]** / **Max [s]**: expose the spread. A large gap between `Min` and `Max` flags a noisy run — rerun or widen the warmup if you see this consistently.
+- **GC [%]**: GC fraction of the minimum-time sample.
+
+Each case is preceded by 50 warmup steps to absorb the JIT tail and let slow transients (e.g. TGV viscous decay) settle into quasi-steady state, and `GC.gc()` is called before the run; `gcsample=true` triggers GC between samples so per-sample GC bias is minimized.
+
+Because samples are invoked on the same `Simulation` object, late samples run from a later physical time than early ones — for transient cases (e.g. sphere wake, jelly gait) this shows up as spread. Treat per-row Δ within ±5% as noise unless the Min/Max spread is tight.

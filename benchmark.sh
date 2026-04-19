@@ -112,7 +112,7 @@ THREADS=('4')
 # Default cases. Arrays below must be same length (specify each case individually)
 CASES=('tgv' 'jelly')
 LOG2P=('6,7' '5,6')
-MAXSTEPS=('100' '100')
+MAXSTEPS=('25' '25')
 FTYPE=('Float32' 'Float32')
 
 # Parse arguments
