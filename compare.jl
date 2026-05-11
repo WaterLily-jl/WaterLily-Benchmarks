@@ -47,7 +47,16 @@ for (i, case) in enumerate(cases)
         speedup_base_idx = findfirst(
             x->length(intersect([x.tags...,find_git_ref(x.tags[end-1])],speedup_base))==length(speedup_base), benchmarks
         )
-        isnothing(speedup_base_idx) && throw(error("Cannot find base speedup for $case."))
+        if isnothing(speedup_base_idx)
+            available = unique([(b.tags[end-2], String(find_git_ref(b.tags[end-1])), b.tags[end], b.tags[end-3]) for b in benchmarks])
+            avail_str = join(["  - Backend=$(t[1]), WaterLily=$(t[2]), Julia=$(t[3]), FP=$(t[4])" for t in available], "\n")
+            missing_tokens = setdiff(speedup_base, reduce(vcat, [[t[1], t[2], t[3], t[4]] for t in available]; init=String[]))
+            error("Cannot find base speedup for '$case' matching tokens $(speedup_base).\n" *
+                  "Available (Backend, WaterLily ref, Julia, FP) for '$case':\n" *
+                  "$avail_str\n" *
+                  "Unmatched token(s): $(isempty(missing_tokens) ? "none — but no single row matched all tokens" : missing_tokens)\n" *
+                  "Note: token matching is case-sensitive (e.g. \"CPUx04\", not \"cpux04\").")
+        end
     else
         speedup_base_idx = 1
     end
