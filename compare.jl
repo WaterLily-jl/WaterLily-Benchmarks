@@ -14,6 +14,7 @@ plot_dir = !isnothing(iarg("plot_dir", ARGS)) ? arg_value("plot_dir", ARGS) : no
 data_dir = !isnothing(iarg("data_dir", ARGS)) ? arg_value("data_dir", ARGS) : "data/benchmark"
 patterns = !isnothing(iarg("patterns", ARGS)) ? arg_value("patterns", ARGS) |> parsestringlist : all_cases
 patterns = patterns[end] == "" ? patterns[1:end-1] : patterns
+show_gc = !isnothing(iarg("--gc", ARGS)) && !(arg_value("--gc", ARGS) in ("0", "false"))
 benchmarks_list = nothing
 !isnothing(plot_dir) &&  mkpath(plot_dir)
 if isnothing(iarg("data_dir", ARGS)) && any(split(x, '.')[end] == "json" for x in ARGS)  # passed json files directly
@@ -46,7 +47,16 @@ for (i, case) in enumerate(cases)
         speedup_base_idx = findfirst(
             x->length(intersect([x.tags...,find_git_ref(x.tags[end-1])],speedup_base))==length(speedup_base), benchmarks
         )
-        isnothing(speedup_base_idx) && throw(error("Cannot find base speedup for $case."))
+        if isnothing(speedup_base_idx)
+            available = unique([(b.tags[end-2], String(find_git_ref(b.tags[end-1])), b.tags[end], b.tags[end-3]) for b in benchmarks])
+            avail_str = join(["  - Backend=$(t[1]), WaterLily=$(t[2]), Julia=$(t[3]), FP=$(t[4])" for t in available], "\n")
+            missing_tokens = setdiff(speedup_base, reduce(vcat, [[t[1], t[2], t[3], t[4]] for t in available]; init=String[]))
+            error("Cannot find base speedup for '$case' matching tokens $(speedup_base).\n" *
+                  "Available (Backend, WaterLily ref, Julia, FP) for '$case':\n" *
+                  "$avail_str\n" *
+                  "Unmatched token(s): $(isempty(missing_tokens) ? "none — but no single row matched all tokens" : missing_tokens)\n" *
+                  "Note: token matching is case-sensitive (e.g. \"CPUx04\", not \"cpux04\").")
+        end
     else
         speedup_base_idx = 1
     end
@@ -58,8 +68,10 @@ for (i, case) in enumerate(cases)
     log2p_str = sort(log2p_str[1])
     f_test = benchmarks[1].tags[2]
     # Get data for PrettyTables
-    header = ["Backend", "WaterLily", "Julia", "Precision", "Allocations", "GC [%]", "Min [s]", "Med [s]", "Max [s]", "Cost [ns/DOF/dt]", "Speed-up"]
-    data = Matrix{Any}(undef, length(benchmarks), length(header))
+    header_top    = ["Backend", "WaterLily", "Julia", "FP", "Alloc", "GC",  "Min", "Med", "Max", "Cost",        "Δ",   "Speedup"]
+    header_units  = [""       , ""         , ""     , ""  , "[k]"  , "[%]", "[s]", "[s]", "[s]", "[ns/DOF/dt]", "[%]", ""       ]
+    column_labels = [header_top, header_units]
+    data = Matrix{Any}(undef, length(benchmarks), length(header_top))
     plotting_data = zeros(length(log2p_str), length(unique(backends_str)), 3) # times, cost, speedups
 
     printstyled("Benchmark environment: $case $f_test (max_steps=$(benchmarks[1].tags[4]), samples=$(length(benchmarks[1][backends_str[1]][first(log2p_str)][f_test].times)))\n", bold=true)
@@ -79,12 +91,25 @@ for (i, case) in enumerate(cases)
             gc_pct = datap.gctimes[imin] / datap.times[imin] * 100.0
             waterlily_ref = String(find_git_ref(benchmark.tags[end-1]))
             data[i, :] .= [backends_str[i], waterlily_ref, benchmark.tags[end], benchmark.tags[end-3],
-                datap.allocs, gc_pct, tmin / 1e9, median(datap.times) / 1e9, maximum(datap.times) / 1e9, cost, speedup]
+                datap.allocs / 1000, gc_pct, tmin / 1e9, median(datap.times) / 1e9, maximum(datap.times) / 1e9, cost, 0.0, speedup]
             versions_key = (waterlily_ref, benchmark.tags[end], benchmark.tags[end-3])
             backend_idx = findall(x -> x == backends_str[i], unique(backends_str))[1]
-            plotting_data[k, backend_idx, :] .= (data[i, 7], data[i, 10], data[i, 11])
+            plotting_data[k, backend_idx, :] .= (data[i, 7], data[i, 10], data[i, 12])
         end
-        sorted_cond, sorted_idx = 0 < sort_idx <= length(header), nothing
+        ref_wl, ref_julia, ref_prec = data[speedup_base_idx, 2], data[speedup_base_idx, 3], data[speedup_base_idx, 4]
+        for i in axes(data, 1)
+            bkend = data[i, 1]
+            ref_idx = findfirst(j -> data[j, 1] == bkend && data[j, 2] == ref_wl &&
+                                     data[j, 3] == ref_julia && data[j, 4] == ref_prec,
+                                axes(data, 1))
+            if isnothing(ref_idx) || i == ref_idx
+                data[i, 11] = NaN
+            else
+                ref_cost = Float64(data[ref_idx, 10])
+                data[i, 11] = (Float64(data[i, 10]) - ref_cost) / ref_cost * 100
+            end
+        end
+        sorted_cond, sorted_idx = 0 < sort_idx <= length(header_top), nothing
         if sorted_cond
             sorted_idx = sortperm(data[:, sort_idx])
             data .= data[sorted_idx, :]
@@ -111,7 +136,17 @@ for (i, case) in enumerate(cases)
         end
 
         # hl_fast = TextHighlighter(f=(data, i, j) -> i == argmin(data[:, end-1]), crayon=Crayon(foreground=(32,125,56)))
-        pretty_table(data; backend=:text, column_labels=header, highlighters=[hl_base, hl_per_backend...], formatters = [fmt__printf("%.2f", [6,7,8,9,10,11])])
+        keep_cols = show_gc ? collect(1:length(header_top)) : [collect(1:5); collect(7:length(header_top))]
+        disp_data = data[:, keep_cols]
+        disp_labels = [header_top[keep_cols], header_units[keep_cols]]
+        ocol_to_dcol = Dict(oi => di for (di, oi) in enumerate(keep_cols))
+        pct2_cols = [ocol_to_dcol[c] for c in [6,7,8,9,10,12] if haskey(ocol_to_dcol, c)]
+        delta_col = ocol_to_dcol[11]
+        alloc_col = ocol_to_dcol[5]
+        fmt_delta_dash = (v, i, j) -> (j == delta_col && v isa Number && isnan(v)) ? "-" : v
+        pretty_table(disp_data; backend=:text, column_labels=disp_labels, column_label_alignment=:c,
+            highlighters=[hl_base, hl_per_backend...],
+            formatters = [fmt_delta_dash, fmt__printf("%.2f", pct2_cols), fmt__printf("%.1f", [delta_col, alloc_col])])
     end
 
     # Plotting each configuration of WaterLily version, Julia version and precision in benchamarks
