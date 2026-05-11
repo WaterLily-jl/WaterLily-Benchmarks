@@ -146,7 +146,7 @@ for (i, case) in enumerate(cases)
         fmt_delta_dash = (v, i, j) -> (j == delta_col && v isa Number && isnan(v)) ? "-" : v
         pretty_table(disp_data; backend=:text, column_labels=disp_labels, column_label_alignment=:c,
             highlighters=[hl_base, hl_per_backend...],
-            formatters = [fmt_delta_dash, fmt__printf("%.2f", pct2_cols), fmt__printf("%.1f", [delta_col, alloc_col])])
+            formatters = [fmt_delta_dash, fmt__printf("%.2f", pct2_cols), fmt__printf("%+.1f", [delta_col]), fmt__printf("%.1f", [alloc_col])])
     end
 
     # Plotting each configuration of WaterLily version, Julia version and precision in benchamarks
