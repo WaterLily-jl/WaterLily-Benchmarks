@@ -68,8 +68,8 @@ for (i, case) in enumerate(cases)
     log2p_str = sort(log2p_str[1])
     f_test = benchmarks[1].tags[2]
     # Get data for PrettyTables
-    header_top    = ["Backend", "WaterLily", "Julia", "FP", "Allocs", "GC",  "Min", "Med", "Max", "Cost",        "Δ",   "Speedup"]
-    header_units  = [""       , ""         , ""     , ""         , ""      , "[%]", "[s]", "[s]", "[s]", "[ns/DOF/dt]", "[%]", ""       ]
+    header_top    = ["Backend", "WaterLily", "Julia", "FP", "Alloc", "GC",  "Min", "Med", "Max", "Cost",        "Δ",   "Speedup"]
+    header_units  = [""       , ""         , ""     , ""  , "[k]"  , "[%]", "[s]", "[s]", "[s]", "[ns/DOF/dt]", "[%]", ""       ]
     column_labels = [header_top, header_units]
     data = Matrix{Any}(undef, length(benchmarks), length(header_top))
     plotting_data = zeros(length(log2p_str), length(unique(backends_str)), 3) # times, cost, speedups
@@ -91,7 +91,7 @@ for (i, case) in enumerate(cases)
             gc_pct = datap.gctimes[imin] / datap.times[imin] * 100.0
             waterlily_ref = String(find_git_ref(benchmark.tags[end-1]))
             data[i, :] .= [backends_str[i], waterlily_ref, benchmark.tags[end], benchmark.tags[end-3],
-                datap.allocs, gc_pct, tmin / 1e9, median(datap.times) / 1e9, maximum(datap.times) / 1e9, cost, 0.0, speedup]
+                datap.allocs / 1000, gc_pct, tmin / 1e9, median(datap.times) / 1e9, maximum(datap.times) / 1e9, cost, 0.0, speedup]
             versions_key = (waterlily_ref, benchmark.tags[end], benchmark.tags[end-3])
             backend_idx = findall(x -> x == backends_str[i], unique(backends_str))[1]
             plotting_data[k, backend_idx, :] .= (data[i, 7], data[i, 10], data[i, 12])
@@ -142,10 +142,11 @@ for (i, case) in enumerate(cases)
         ocol_to_dcol = Dict(oi => di for (di, oi) in enumerate(keep_cols))
         pct2_cols = [ocol_to_dcol[c] for c in [6,7,8,9,10,12] if haskey(ocol_to_dcol, c)]
         delta_col = ocol_to_dcol[11]
+        alloc_col = ocol_to_dcol[5]
         fmt_delta_dash = (v, i, j) -> (j == delta_col && v isa Number && isnan(v)) ? "-" : v
         pretty_table(disp_data; backend=:text, column_labels=disp_labels, column_label_alignment=:c,
             highlighters=[hl_base, hl_per_backend...],
-            formatters = [fmt_delta_dash, fmt__printf("%.2f", pct2_cols), fmt__printf("%.1f", [delta_col])])
+            formatters = [fmt_delta_dash, fmt__printf("%.2f", pct2_cols), fmt__printf("%.1f", [delta_col, alloc_col])])
     end
 
     # Plotting each configuration of WaterLily version, Julia version and precision in benchamarks
