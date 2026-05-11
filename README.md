@@ -59,7 +59,7 @@ julia --project compare.jl $(find data/benchmark -name "tgv*CPU.json" -printf "%
 ```
 by taking the `tgv` JSON files, sort them by creation time, and pass them as arguments to the `compare.jl` program. Multiple ppaterns can also be specified with `--patterns="tgv jelly"` for example.
 
-The `--speedup_base="<backend>,<waterlily hash/ref>,<julia version>"` argument (or a subset of it, ie. `"<backend>,<julia version>"`) can be passed to reference speed-ups: `speedup_x = time(benchmark_<backend>) / time(benchmark_x)`. The `--sort=<1 to 11>` argument can also be used when running the comparison. It will sort the benchmark table rows by the values corresponding to the column index passed as argument. `--sort=1` corresponds to sorting by backend alphabetically; `--sort=7` sorts by minimum time; `--sort=11` sorts by speedup. The speedup baseline row is highlighted in blue, and the fastest run per backend is highlighted in green. Last, a `--backend_color=<colorscheme>` can be passed to use a certain [color scheme](https://docs.juliaplots.org/dev/generated/colorschemes/) if plotting results (ie. passing the `--plot_dir=<plot_dir>` argument).
+The `--speedup_base="<backend>,<waterlily hash/ref>,<julia version>"` argument (or a subset of it, ie. `"<backend>,<julia version>"`) can be passed to reference speed-ups: `speedup_x = time(benchmark_<backend>) / time(benchmark_x)`. Tokens are matched case-sensitively against the tags stored in the JSON files, so use `CPUx04` (not `cpux04`); if no match is found the script prints the available `(Backend, WaterLily ref, Julia, FP)` quadruples and the unmatched tokens. The `--sort=<1 to 12>` argument can also be used when running the comparison. It will sort the benchmark table rows by the values corresponding to the column index passed as argument. `--sort=1` corresponds to sorting by backend alphabetically; `--sort=7` sorts by minimum time; `--sort=11` sorts by Δ; `--sort=12` sorts by speedup. The speedup baseline row is highlighted in blue, and the fastest run per backend is highlighted in green. The `--gc` (or `--gc=1`) flag shows the GC fraction column, which is hidden by default. Last, a `--backend_color=<colorscheme>` can be passed to use a certain [color scheme](https://docs.juliaplots.org/dev/generated/colorschemes/) if plotting results (ie. passing the `--plot_dir=<plot_dir>` argument).
 
 ## Measurement methodology
 
@@ -67,7 +67,11 @@ Each benchmark runs `sim_step!` for `max_steps` iterations (default `25`) as a s
 
 - **Min [s]**: minimum across samples — used as the robust point estimate (insensitive to OS jitter / GC) for speedup and cost-per-DOF.
 - **Med [s]** / **Max [s]**: expose the spread. A large gap between `Min` and `Max` flags a noisy run — rerun or widen the warmup if you see this consistently.
-- **GC [%]**: GC fraction of the minimum-time sample.
+- **Alloc [k]**: number of allocations in the minimum-time sample, divided by 1000.
+- **Cost [ns/DOF/dt]**: `min_time / DOF / max_steps`, normalized cost per cell per time step.
+- **Δ [%]**: cost delta against the same-backend reference row matching the speedup baseline's `(WaterLily ref, Julia, FP)`. The reference row itself prints `-`. Useful to compare WaterLily versions, Julia versions, or precisions while holding the backend fixed.
+- **Speedup**: `time(speedup_base) / min_time`. The speedup baseline defaults to the first row; set explicitly with `--speedup_base`.
+- **GC [%]** (hidden by default; show with `--gc`): GC fraction of the minimum-time sample.
 
 Each case is preceded by 50 warmup steps to absorb the JIT tail and let slow transients (e.g. TGV viscous decay) settle into quasi-steady state, and `GC.gc()` is called before the run; `gcsample=true` triggers GC between samples so per-sample GC bias is minimized.
 
