@@ -19,6 +19,16 @@ join_array_tuple_comma () {
     echo "[${joined%,}]"
 }
 
+# Expand provided values ($3..) to one per case into R: a single value broadcasts,
+# N values are kept, none (omitted) uses the per-case defaults in $2.
+expand () { # $1=arg name (for errors), $2=per-case defaults, $3..=provided values
+    local name=$1 defs=$2 i; shift 2
+    if   [ $# -eq "$NCASES" ]; then R=("$@")
+    elif [ $# -eq 0 ];         then R=($defs)
+    elif [ $# -eq 1 ];         then R=(); for ((i=0; i<NCASES; i++)); do R+=("$1"); done
+    else echo "ERROR: '$name' has $# value(s) but expected 1 or $NCASES (cases)" >&2; exit 1; fi
+}
+
 # Check if juliaup exists in environment
 check_if_juliaup () {
     if command -v juliaup &> /dev/null
@@ -109,11 +119,11 @@ DATA_DIR="data/benchmark/"
 WL_VERSIONS=()
 BACKENDS=('Array' 'CuArray')
 THREADS=('4')
-# Default cases. Arrays below must be same length (specify each case individually)
+# Default sweep (run when -c is omitted) and per-case defaults for omitted -p/-s/-ft.
 CASES=('tgv' 'jelly')
-LOG2P=('6,7' '5,6')
-MAXSTEPS=('25' '25')
-FTYPE=('Float32' 'Float32')
+LOG2P=(); MAXSTEPS=(); FTYPE=()                            # provided -p/-s/-ft (empty => default)
+declare -A DEF_LOG2P=([tgv]=6,7 [jelly]=5,6 [sphere]=3,4 [cylinder]=4,5)  # default size per case; add cases here
+DEF_MAXSTEPS=25; DEF_FTYPE=Float32                         # default steps/type (uniform)
 
 # Parse arguments
 while [ $# -gt 0 ]; do
@@ -173,20 +183,16 @@ if [[ " ${BACKENDS[*]} " =~ [[:space:]]'Array'[[:space:]] ]]; then
     fi
 fi
 
-# Assert all case arguments have equal size
+# Expand case args: single value broadcasts, N kept, omitted uses per-case defaults.
 NCASES=${#CASES[@]}
-NLOG2P=${#LOG2P[@]}
-NMAXSTEPS=${#MAXSTEPS[@]}
-NFTYPE=${#FTYPE[@]}
-st=0
-for i in $NLOG2P $NMAXSTEPS $NFTYPE; do
-    [ "$NCASES" = "$i" ]
-    st=$(( $? + st ))
+dP=; dS=; dFT=
+for c in "${CASES[@]}"; do
+    [ ${#LOG2P[@]} -ne 0 ] || [ -n "${DEF_LOG2P[$c]+x}" ] || { echo "ERROR: case '$c' has no default -p; add it to DEF_LOG2P in benchmark.sh or pass -p explicitly" >&2; exit 1; }
+    dP+="${DEF_LOG2P[$c]} "; dS+="$DEF_MAXSTEPS "; dFT+="$DEF_FTYPE "
 done
-if [ $st != 0 ]; then
-    echo "ERROR: Case arguments are arrays of different sizes."
-    exit 1
-fi
+expand -p  "$dP"  "${LOG2P[@]}";    LOG2P=("${R[@]}")
+expand -s  "$dS"  "${MAXSTEPS[@]}"; MAXSTEPS=("${R[@]}")
+expand -ft "$dFT" "${FTYPE[@]}";    FTYPE=("${R[@]}")
 
 # Check WATERLILY_DIR is set and functional
 if [ -z $WL_DIR ]; then # --waterlily-dir argument not passed
