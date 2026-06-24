@@ -29,6 +29,15 @@ expand () { # $1=arg name (for errors), $2=per-case defaults, $3..=provided valu
     else echo "ERROR: '$name' has $# value(s) but expected 1 or $NCASES (cases)" >&2; exit 1; fi
 }
 
+# Normalise a boolean-ish string into "true"/"false" (sets the global UPDATE)
+set_update () {
+    case "$(echo "$1" | tr '[:upper:]' '[:lower:]')" in
+        true|1|yes|y) UPDATE=true ;;
+        false|0|no|n) UPDATE=false ;;
+        *) printf "ERROR: Invalid value '%s' for --update/-u (expected true/false/0/1)\n" "$1" 1>&2; exit 1 ;;
+    esac
+}
+
 # Check if juliaup exists in environment
 check_if_juliaup () {
     if command -v juliaup &> /dev/null
@@ -80,6 +89,9 @@ local_preferences () {
 # Update project environment with new Julia version: Mark WaterLily as a development packag, then update dependencies and precompile.
 update_environment () {
     local_preferences
+    if ! $UPDATE; then
+        return
+    fi
     echo "Updating environment to Julia $version and compiling WaterLily"
     full_args=(--project=$THIS_DIR -e "using Pkg; Pkg.develop(PackageSpec(path=get(ENV, \"WATERLILY_DIR\", \"\"))); Pkg.update();")
     julia_cmd
@@ -106,7 +118,8 @@ display_info () {
     echo " - Cases:         ${CASES[@]}
  - Size:          ${LOG2P[@]:0:$NCASES}
  - Sim. steps:    ${MAXSTEPS[@]:0:$NCASES}
- - Data type:     ${FTYPE[@]:0:$NCASES}"
+ - Data type:     ${FTYPE[@]:0:$NCASES}
+ - Update env:    $UPDATE"
     echo "--------------------------------------"; echo
 }
 
@@ -119,6 +132,7 @@ DATA_DIR="data/benchmark/"
 WL_VERSIONS=()
 BACKENDS=('Array' 'CuArray')
 THREADS=('4')
+UPDATE=false
 # Default sweep (run when -c is omitted) and per-case defaults for omitted -p/-s/-ft.
 CASES=('tgv' 'jelly')
 LOG2P=(); MAXSTEPS=(); FTYPE=()                            # provided -p/-s/-ft (empty => default)
@@ -166,6 +180,10 @@ case "$1" in
     ;;
     --data_dir|-dd)
     DATA_DIR=($2)
+    shift
+    ;;
+    --update|-u)
+    set_update "$2"
     shift
     ;;
     *)

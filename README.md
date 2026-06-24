@@ -32,7 +32,7 @@ julia --project compare.jl --plot_dir="plots" $(find data/ \( -name "tgv*json" -
 
 ## Usage information
 The accepted command line arguments are (parenthesis for short version):
- - Backend arguments: `--waterlily(-w)`, `--waterlily_dir(-wd)`, `--data_dir(-dd)`, `--versions(-v)`, `--backends(-b)`, `--threads(-t)`. Respectively: List of WaterLily git hashes/tags/branches to test, WaterLily.jl directory, path to store the benchmark data, Julia version, backend types, number of threads (when `--backends` contains `Array`). The latter 3 arguments accept a list of different parameters, for example:
+ - Backend arguments: `--waterlily(-w)`, `--waterlily_dir(-wd)`, `--data_dir(-dd)`, `--versions(-v)`, `--backends(-b)`, `--threads(-t)`, `--update(-u)`. Respectively: List of WaterLily git hashes/tags/branches to test, WaterLily.jl directory, path to store the benchmark data, Julia version, backend types, number of threads (when `--backends` contains `Array`), and whether to update the Julia environment before each run (`Pkg.develop` `$WATERLILY_DIR` + `Pkg.update`). `--update` accepts `true`/`false`/`1`/`0` and defaults to `false`; set `-u true` (or `-u 1`) when the WaterLily/Julia version changes between runs. The version/backend/threads arguments accept a list of different parameters, for example:
     ```sh
     -w "fae590d e22ad41" -v "1.8.5 1.9.4" -b "Array CuArray" -t "1 6"
     ```
