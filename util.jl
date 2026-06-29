@@ -1,6 +1,7 @@
 using BenchmarkTools
 using Plots, StatsPlots, LaTeXStrings, CategoricalArrays, Printf, ColorSchemes
 using KernelAbstractions
+using JLD2  # activates WaterLily's save!/load! extension (developed-flow checkpoints)
 
 iarg(arg) = occursin.(arg, ARGS) |> findfirst
 iarg(arg, args) = occursin.(arg, args) |> findfirst
@@ -9,6 +10,11 @@ arg_value(arg, args) = split(args[iarg(arg, args)], "=")[end]
 metaparse(x) = eval(Meta.parse(x))
 getf(str) = eval(Symbol(str))
 parsestringlist(x) = filter(!isempty, occursin(',',x) ? split(x,',') : split(x,' '))  .|> x -> filter(x -> !isspace(x), x)
+
+# Developed-flow checkpoints (see develop.jl): one JLD2 per case/size/type, loaded to start
+# timing from a developed flow instead of the startup transient.
+checkpoint_name(case, p, ft) = "$(case)_$(p)_$(ft).jld2"
+remeasure_case(case) = case in ("cylinder", "jelly")  # moving/actuated bodies need remeasure
 
 function parse_cla(args; cases=["tgv"], log2p=[(6,7)], max_steps=[100], ftype=[Float32], backend=Array, data_dir="data/")
     cases = !isnothing(iarg("cases", args)) ? arg_value("cases", args) |> metaparse : cases
@@ -30,11 +36,14 @@ macro add_benchmark(args...)
     end |> esc
 end
 
-function add_to_suite!(suite, sim_function; p=(3,4,5), s=100, ft=Float32, backend=Array, bstr="CPU", remeasure=false)
+function add_to_suite!(suite, sim_function; case="", p=(3,4,5), s=100, ft=Float32, backend=Array, bstr="CPU", remeasure=false, developed="")
     suite[bstr] = BenchmarkGroup([bstr])
     for n in p
         sim = sim_function(n, backend; T=ft)
-        sim_step!(sim, typemax(ft); max_steps=50, verbose=false, remeasure=remeasure) # warm up
+        sim_step!(sim, typemax(ft); max_steps=50, verbose=false, remeasure=remeasure) # warm up (JIT + clocks)
+        if !isempty(developed) # start timing from a pre-developed flow (see develop.jl)
+            load!(sim.flow; fname=checkpoint_name(case, n, ft), dir=developed); measure!(sim)
+        end
         suite[bstr][repr(n)] = BenchmarkGroup([repr(n)])
         KA_backend = KernelAbstractions.get_backend(sim.flow.p)
         @add_benchmark sim_step!($sim, $typemax($ft); max_steps=$s, verbose=false, remeasure=$remeasure) $KA_backend suite[bstr][repr(n)] "sim_step!"
@@ -221,4 +230,10 @@ tests_dets = Dict(
     "cylinder" => Dict("size" => (9, 6, 2), "title" => "Moving cylinder"),
     "donut" => Dict("size" => (2, 1, 1), "title" => "Donut"),
     "jelly" => Dict("size" => (1, 1, 4), "title" => "Jelly"),
+)
+
+# Time (in tU/L) each case is advanced to reach a developed flow before checkpointing (develop.jl):
+# jelly = one actuation period (π); tgv = 5 (of its ~20 TU run); bluff/static bodies = 100.
+develop_time = Dict(
+    "tgv" => 5.0, "sphere" => 100.0, "cylinder" => 100.0, "donut" => 100.0, "jelly" => Float64(π),
 )
