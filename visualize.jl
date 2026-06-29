@@ -11,7 +11,7 @@ function visualize_checkpoints(cases, log2p, ftype, backend; ckpt_dir="checkpoin
         for n in ps
             sim = getf(case)(n, backend; T=ft)
             load!(sim.flow; fname=checkpoint_name(case, n, ft), dir=ckpt_dir); measure!(sim)
-            img = joinpath(img_dir, "$(case)_$(n)_$(ft).png")
+            img = joinpath(img_dir, "$(case)_p$(n).png")
             viz!(sim; img=img, hidedecorations=true, verbose=false)
             println("  → $(img)"); flush(stdout)
         end
