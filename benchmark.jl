@@ -22,7 +22,9 @@ cases, log2p, max_steps, ftype, backend, data_dir = parse_cla(ARGS;
 )
 # `--developed=<dir>` (default "checkpoints"): time sim_step! from the pre-developed flows in <dir>
 # (see develop.jl). A missing checkpoint is a hard error; pass --developed="" to time the transient.
-developed = !isnothing(iarg("developed", ARGS)) ? arg_value("developed", ARGS) : "checkpoints"
+# Match the flag exactly — "developed" can appear inside another value (e.g. a data_dir ".../-developed").
+_devi = findfirst(a -> startswith(a, "--developed="), ARGS)
+developed = isnothing(_devi) ? "checkpoints" : split(ARGS[_devi], "="; limit=2)[2]
 
 # Generate benchmark data
 data_dir = joinpath(data_dir, hostname * "_" * git_hash)
