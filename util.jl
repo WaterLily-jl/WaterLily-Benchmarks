@@ -36,6 +36,21 @@ macro add_benchmark(args...)
     end |> esc
 end
 
+# Warm up until BOTH a step count and a wall-clock budget are met, so small fast cases
+# drive the device to steady (boost) clocks before timing. A short fixed-step warm-up
+# leaves a freshly precompiled GPU at idle clocks, giving the first version in a session a
+# cold-start penalty (the spurious ~3x GPU swings in the v7-v8 data). `min_steps` dominates
+# for large cases, so only the clock-sensitive small ones pay extra.
+function warmup!(sim, ft, remeasure, KA_backend; min_steps=50, seconds=2.0)
+    steps = 0; t0 = time()
+    while steps < min_steps || (time() - t0) < seconds
+        sim_step!(sim, typemax(ft); max_steps=10, verbose=false, remeasure=remeasure)
+        KernelAbstractions.synchronize(KA_backend)
+        steps += 10
+    end
+    return steps
+end
+
 function add_to_suite!(suite, sim_function; case="", p=(3,4,5), s=100, ft=Float32, backend=Array, bstr="CPU", remeasure=false, developed="")
     suite[bstr] = BenchmarkGroup([bstr])
     for n in p
@@ -45,10 +60,10 @@ function add_to_suite!(suite, sim_function; case="", p=(3,4,5), s=100, ft=Float3
         !isempty(ckpt) && !isfile(ckpt) && error("No developed-flow checkpoint at '$ckpt'. Generate it first " *
             "with `julia --project=. develop.jl` (case=$case, log2p=$n), or pass --developed=\"\" to time the startup transient.")
         sim = sim_function(n, backend; T=ft)
-        sim_step!(sim, typemax(ft); max_steps=50, verbose=false, remeasure=remeasure) # warm up (JIT + clocks)
-        isempty(ckpt) || (load!(sim.flow; fname=checkpoint_name(case, n, ft), dir=developed); measure!(sim)) # start from developed flow
-        suite[bstr][repr(n)] = BenchmarkGroup([repr(n)])
         KA_backend = KernelAbstractions.get_backend(sim.flow.p)
+        warmup!(sim, ft, remeasure, KA_backend)  # JIT + settle device clocks (from rest)
+        isempty(ckpt) || (load!(sim.flow; fname=checkpoint_name(case, n, ft), dir=developed); measure!(sim)) # then start from developed flow
+        suite[bstr][repr(n)] = BenchmarkGroup([repr(n)])
         @add_benchmark sim_step!($sim, $typemax($ft); max_steps=$s, verbose=false, remeasure=$remeasure) $KA_backend suite[bstr][repr(n)] "sim_step!"
     end
 end
