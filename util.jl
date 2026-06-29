@@ -233,7 +233,7 @@ tests_dets = Dict(
 )
 
 # Time (in tU/L) each case is advanced to reach a developed flow before checkpointing (develop.jl):
-# jelly = one actuation period (π); tgv = 5 (of its ~20 TU run); bluff/static bodies = 100.
+# jelly = 10 actuation periods (10π); tgv = 10 (of its ~20 TU run); bluff/static bodies = 100.
 develop_time = Dict(
-    "tgv" => 5.0, "sphere" => 100.0, "cylinder" => 100.0, "donut" => 100.0, "jelly" => Float64(π),
+    "tgv" => 10.0, "sphere" => 100.0, "cylinder" => 100.0, "donut" => 100.0, "jelly" => 10*Float64(π),
 )
