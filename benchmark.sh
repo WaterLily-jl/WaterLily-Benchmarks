@@ -119,6 +119,7 @@ display_info () {
  - Size:          ${LOG2P[@]:0:$NCASES}
  - Sim. steps:    ${MAXSTEPS[@]:0:$NCASES}
  - Data type:     ${FTYPE[@]:0:$NCASES}
+ - Developed:     ${DEVELOPED:-(transient)}
  - Update env:    $UPDATE"
     echo "--------------------------------------"; echo
 }
@@ -133,6 +134,7 @@ WL_VERSIONS=()
 BACKENDS=('Array' 'CuArray')
 THREADS=('4')
 UPDATE=false
+DEVELOPED=""                                              # --developed=<dir>: time from developed-flow checkpoints
 # Default sweep (run when -c is omitted) and per-case defaults for omitted -p/-s/-ft.
 CASES=('tgv' 'jelly')
 LOG2P=(); MAXSTEPS=(); FTYPE=()                            # provided -p/-s/-ft (empty => default)
@@ -180,6 +182,10 @@ case "$1" in
     ;;
     --data_dir|-dd)
     DATA_DIR=($2)
+    shift
+    ;;
+    --developed|-dev)
+    DEVELOPED=($2)
     shift
     ;;
     --update|-u)
@@ -254,6 +260,7 @@ LOG2P=$(join_array_tuple_comma "${LOG2P[*]}")
 MAXSTEPS=$(join_array_comma "${MAXSTEPS[*]}")
 FTYPE=$(join_array_comma "${FTYPE[*]}")
 args_cases="--cases=$CASES --log2p=$LOG2P --max_steps=$MAXSTEPS --ftype=$FTYPE --data_dir=$DATA_DIR"
+[ -n "$DEVELOPED" ] && args_cases="$args_cases --developed=$DEVELOPED"
 
 # Benchmarks
 for version in "${VERSIONS[@]}" ; do
