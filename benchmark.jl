@@ -20,9 +20,9 @@ end
 cases, log2p, max_steps, ftype, backend, data_dir = parse_cla(ARGS;
     cases=["tgv", "jelly"], log2p=[(6,7), (5,6)], max_steps=[25, 25], ftype=[Float32, Float32], backend=Array, data_dir="data/"
 )
-# Optional `--developed=<dir>`: start timing from the pre-developed flows in <dir> (see develop.jl);
-# empty (default) times the startup transient as before.
-developed = !isnothing(iarg("developed", ARGS)) ? arg_value("developed", ARGS) : ""
+# `--developed=<dir>` (default "checkpoints"): time sim_step! from the pre-developed flows in <dir>
+# (see develop.jl). A missing checkpoint is a hard error; pass --developed="" to time the transient.
+developed = !isnothing(iarg("developed", ARGS)) ? arg_value("developed", ARGS) : "checkpoints"
 
 # Generate benchmark data
 data_dir = joinpath(data_dir, hostname * "_" * git_hash)

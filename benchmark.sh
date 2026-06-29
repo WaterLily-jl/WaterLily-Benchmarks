@@ -134,7 +134,7 @@ WL_VERSIONS=()
 BACKENDS=('Array' 'CuArray')
 THREADS=('4')
 UPDATE=false
-DEVELOPED=""                                              # --developed=<dir>: time from developed-flow checkpoints
+DEVELOPED="checkpoints"                                   # --developed=<dir>: time from developed-flow checkpoints (default); -dev "" for transient
 # Default sweep (run when -c is omitted) and per-case defaults for omitted -p/-s/-ft.
 CASES=('tgv' 'jelly')
 LOG2P=(); MAXSTEPS=(); FTYPE=()                            # provided -p/-s/-ft (empty => default)
@@ -260,7 +260,7 @@ LOG2P=$(join_array_tuple_comma "${LOG2P[*]}")
 MAXSTEPS=$(join_array_comma "${MAXSTEPS[*]}")
 FTYPE=$(join_array_comma "${FTYPE[*]}")
 args_cases="--cases=$CASES --log2p=$LOG2P --max_steps=$MAXSTEPS --ftype=$FTYPE --data_dir=$DATA_DIR"
-[ -n "$DEVELOPED" ] && args_cases="$args_cases --developed=$DEVELOPED"
+args_cases="$args_cases --developed=$DEVELOPED"  # always forwarded so -dev "" reaches benchmark.jl (transient)
 
 # Benchmarks
 for version in "${VERSIONS[@]}" ; do

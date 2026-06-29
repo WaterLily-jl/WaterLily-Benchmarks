@@ -39,11 +39,14 @@ end
 function add_to_suite!(suite, sim_function; case="", p=(3,4,5), s=100, ft=Float32, backend=Array, bstr="CPU", remeasure=false, developed="")
     suite[bstr] = BenchmarkGroup([bstr])
     for n in p
+        # Developed flows are the default. A missing checkpoint is a hard error (fail before the warm-up):
+        # generate it with develop.jl, or opt out of developed flows by passing --developed="".
+        ckpt = isempty(developed) ? "" : joinpath(developed, checkpoint_name(case, n, ft))
+        !isempty(ckpt) && !isfile(ckpt) && error("No developed-flow checkpoint at '$ckpt'. Generate it first " *
+            "with `julia --project=. develop.jl` (case=$case, log2p=$n), or pass --developed=\"\" to time the startup transient.")
         sim = sim_function(n, backend; T=ft)
         sim_step!(sim, typemax(ft); max_steps=50, verbose=false, remeasure=remeasure) # warm up (JIT + clocks)
-        if !isempty(developed) # start timing from a pre-developed flow (see develop.jl)
-            load!(sim.flow; fname=checkpoint_name(case, n, ft), dir=developed); measure!(sim)
-        end
+        isempty(ckpt) || (load!(sim.flow; fname=checkpoint_name(case, n, ft), dir=developed); measure!(sim)) # start from developed flow
         suite[bstr][repr(n)] = BenchmarkGroup([repr(n)])
         KA_backend = KernelAbstractions.get_backend(sim.flow.p)
         @add_benchmark sim_step!($sim, $typemax($ft); max_steps=$s, verbose=false, remeasure=$remeasure) $KA_backend suite[bstr][repr(n)] "sim_step!"
