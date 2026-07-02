@@ -72,9 +72,13 @@ julia_cmd () {
 git_checkout () {
     if $WATERLILY_CHECKOUT; then
         echo "Git checkout to WaterLily $wl_version"
-        cd $WATERLILY_DIR
-        git checkout $wl_version
-        cd $THIS_DIR
+        git -C "$WATERLILY_DIR" checkout $wl_version
+    fi
+    # Paired BiotSavartBCs checkout AFTER WaterLily, so branches needing new WaterLily
+    # symbols (e.g. combined-tol needs l2n_tol) resolve against the right WaterLily.
+    if [ -n "${biot_version}" ]; then
+        echo "Git checkout to BiotSavartBCs $biot_version"
+        git -C "$BIOTSAVART_DIR" checkout $biot_version
     fi
 }
 
@@ -93,7 +97,11 @@ update_environment () {
         return
     fi
     echo "Updating environment to Julia $version and compiling WaterLily"
-    full_args=(--project=$THIS_DIR -e "using Pkg; Pkg.develop(PackageSpec(path=get(ENV, \"WATERLILY_DIR\", \"\"))); Pkg.update();")
+    dev_pkgs="Pkg.develop(PackageSpec(path=get(ENV, \"WATERLILY_DIR\", \"\")));"
+    # When benchmarking paired Biot branches, dev BiotSavartBCs from the local clone too
+    # (overrides the [sources] GitHub pin) so git_checkout can switch its branch per run.
+    [ -n "${BIOTSAVART_DIR:-}" ] && dev_pkgs="$dev_pkgs Pkg.develop(PackageSpec(path=ENV[\"BIOTSAVART_DIR\"]));"
+    full_args=(--project=$THIS_DIR -e "using Pkg; $dev_pkgs Pkg.update();")
     julia_cmd
 }
 
@@ -112,6 +120,7 @@ display_info () {
  - Benchmark dir: $DATA_DIR
  - Julia:         ${VERSIONS[@]}
  - Backends:      ${BACKENDS[@]}"
+    [ ${#BIOT_VERSIONS[@]} -ne 0 ] && echo " - BiotSavartBCs: ${BIOT_VERSIONS[@]} (dir: ${BIOTSAVART_DIR:-$BS_DIR})"
     if [[ " ${BACKENDS[*]} " =~ [[:space:]]'Array'[[:space:]] ]]; then
         echo " - CPU threads:   ${THREADS[@]}"
     fi
@@ -129,8 +138,10 @@ JULIA_USER_VERSION=$(julia_version)
 VERSIONS=()
 DEFAULT_VERSION=0
 WL_DIR=""
+BS_DIR=""
 DATA_DIR="data/benchmark/"
 WL_VERSIONS=()
+BIOT_VERSIONS=()                                          # --biotsavart/-wb: BiotSavartBCs branches, paired 1:1 with --waterlily
 BACKENDS=('Array' 'CuArray')
 THREADS=('4')
 UPDATE=false
@@ -150,6 +161,14 @@ case "$1" in
     ;;
     --waterlily|-w)
     WL_VERSIONS=($2)
+    shift
+    ;;
+    --biotsavart|-wb)
+    BIOT_VERSIONS=($2)
+    shift
+    ;;
+    --biotsavart_dir|-wbd)
+    BS_DIR=($2)
     shift
     ;;
     --versions|-v)
@@ -240,6 +259,20 @@ else
     WL_VERSIONS=($(waterlily_version))
 fi
 
+# Paired BiotSavartBCs versions (optional). Needs a local clone (--biotsavart_dir/-wbd or
+# $BIOTSAVART_DIR) and one Biot branch per WaterLily version. Used to benchmark criterion
+# changes that span both packages (e.g. jelly: WaterLily master+Biot main vs poisson-rms-tol+combined-tol).
+if (( ${#BIOT_VERSIONS[@]} != 0 )); then
+    [ -n "$BS_DIR" ] && export BIOTSAVART_DIR=$BS_DIR
+    if [ -z "${BIOTSAVART_DIR:-}" ]; then
+        printf "ERROR: --biotsavart/-wb needs a local BiotSavartBCs clone via --biotsavart_dir/-wbd or \$BIOTSAVART_DIR.\n" 1>&2; exit 1
+    fi
+    export BIOTSAVART_DIR=$(realpath -e "$BIOTSAVART_DIR")
+    if (( ${#BIOT_VERSIONS[@]} != ${#WL_VERSIONS[@]} )); then
+        printf "ERROR: --biotsavart has ${#BIOT_VERSIONS[@]} value(s) but must match --waterlily (${#WL_VERSIONS[@]}).\n" 1>&2; exit 1
+    fi
+fi
+
 # Check if Julia versions have been specified, and if so check that juliaup is installed
 if (( ${#VERSIONS[@]} != 0 )); then
     if ! check_if_juliaup; then
@@ -265,7 +298,9 @@ args_cases="$args_cases --developed=$DEVELOPED"  # always forwarded so -dev "" r
 # Benchmarks
 for version in "${VERSIONS[@]}" ; do
     echo "Running with Julia version $version from $( which julia )"
-    for wl_version in "${WL_VERSIONS[@]}" ; do
+    for i in "${!WL_VERSIONS[@]}" ; do
+        wl_version="${WL_VERSIONS[$i]}"
+        biot_version="${BIOT_VERSIONS[$i]:-}"
         git_checkout
         for backend in "${BACKENDS[@]}" ; do
             if [ "${backend}" == "Array" ]; then
