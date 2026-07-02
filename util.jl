@@ -36,11 +36,7 @@ macro add_benchmark(args...)
     end |> esc
 end
 
-# Warm up until BOTH a step count and a wall-clock budget are met, so small fast cases
-# drive the device to steady (boost) clocks before timing. A short fixed-step warm-up
-# leaves a freshly precompiled GPU at idle clocks, giving the first version in a session a
-# cold-start penalty (the spurious ~3x GPU swings in the v7-v8 data). `min_steps` dominates
-# for large cases, so only the clock-sensitive small ones pay extra.
+# Warm up until step count and a wall-clock budget are met and force backend sync
 function warmup!(sim, ft, remeasure, KA_backend; min_steps=50, seconds=2.0)
     steps = 0; t0 = time()
     while steps < min_steps || (time() - t0) < seconds
@@ -48,7 +44,6 @@ function warmup!(sim, ft, remeasure, KA_backend; min_steps=50, seconds=2.0)
         KernelAbstractions.synchronize(KA_backend)
         steps += 10
     end
-    return steps
 end
 
 function add_to_suite!(suite, sim_function; case="", p=(3,4,5), s=100, ft=Float32, backend=Array, bstr="CPU", remeasure=false, developed="")
