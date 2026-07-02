@@ -46,7 +46,24 @@ function warmup!(sim, ft, remeasure, KA_backend; min_steps=50, seconds=2.0)
     end
 end
 
-function add_to_suite!(suite, sim_function; case="", p=(3,4,5), s=100, ft=Float32, backend=Array, bstr="CPU", remeasure=false, developed="", resets=nothing)
+# Restore a developed sim to its checkpoint (in-place copyto! load!, VRAM-safe) + remeasure the
+# body; no-op for the transient (empty dir). collect_runs! calls this before each run so all runs
+# time the same states.
+reset_sim!(sim, fname, dir) = !isempty(dir) && (load!(sim.flow; fname, dir); measure!(sim))
+
+# Per-step allocation COUNT averaged over an s-step block. A single step is unrepresentative for
+# variable-V-cycle cases (e.g. jelly): BenchmarkTools measures one step ≈ the common floor, hiding
+# the difference that lives in the multi-step average (master's expensive-V-cycle tail). Averaging
+# over the block restores it. Deterministic, so one pass suffices (no runs/statistics needed).
+function block_alloc_count(sim, ft, s, remeasure)
+    g0 = Base.gc_num()
+    for _ in 1:s
+        sim_step!(sim, typemax(ft); max_steps=1, remeasure=remeasure)
+    end
+    Base.gc_alloc_count(Base.GC_Diff(Base.gc_num(), g0)) ÷ s
+end
+
+function add_to_suite!(suite, sim_function; case="", p=(3,4,5), s=100, ft=Float32, backend=Array, bstr="CPU", remeasure=false, developed="", resets=nothing, allocs=nothing)
     suite[bstr] = BenchmarkGroup([bstr])
     for n in p
         # Developed flows are the default. A missing checkpoint is a hard error (fail before the warm-up):
@@ -56,16 +73,13 @@ function add_to_suite!(suite, sim_function; case="", p=(3,4,5), s=100, ft=Float3
             "with `julia --project=. develop.jl` (case=$case, log2p=$n), or pass --developed=\"\" to time the startup transient.")
         sim = sim_function(n, backend; T=ft)
         KA_backend = KernelAbstractions.get_backend(sim.flow.p)
-        # `reset!` restores the developed flow (in-place copyto! load!, VRAM-safe) + remeasures the
-        # body. collect_runs! calls it before each run so all runs time the SAME states — the
-        # between-run scatter is then pure measurement noise. For the transient (no checkpoint) it
-        # is a no-op and the runs march continuously.
-        reset! = let sim=sim, fname=checkpoint_name(case, n, ft), dir=developed
-            isempty(ckpt) ? (() -> nothing) : (() -> (load!(sim.flow; fname, dir); measure!(sim)))
-        end
-        reset!()                                 # start from the developed flow (if any)
-        warmup!(sim, ft, remeasure, KA_backend)  # JIT + settle device clocks from the state that gets timed
-        isnothing(resets) || (resets[repr(n)] = reset!)
+        fname = checkpoint_name(case, n, ft)
+        reset_sim!(sim, fname, developed)        # start from the developed flow (if any), so warm-up runs from it
+        warmup!(sim, ft, remeasure, KA_backend)  # JIT + settle device clocks from the developed state
+        # allocations are a representative developed-flow block (a few steps past the checkpoint is fine);
+        # the per-run reset in collect_runs! is what makes the timed runs all start from the same time.
+        isnothing(allocs) || (allocs[repr(n)] = block_alloc_count(sim, ft, s, remeasure))
+        isnothing(resets) || push!(resets, (sim=sim, fname=fname, dir=developed))
         suite[bstr][repr(n)] = BenchmarkGroup([repr(n)])
         # single sim_step! (+ sync in @add_benchmark): each BenchmarkTools sample is one step,
         # so `run(..., samples=s)` times s consecutive steps individually (see collect_runs!).

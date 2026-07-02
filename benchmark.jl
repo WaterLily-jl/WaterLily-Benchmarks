@@ -10,9 +10,9 @@ const N_RUNS = 5  # number of independent runs; each times `max_steps` individua
 # (run r occupies samples (r-1)*s+1 : r*s), into one Trial so the existing save/compare pipeline
 # still applies; compare.jl reshapes to (s, N_RUNS) and reports reference = min over runs of the
 # per-run median, noise = std over runs of that median.
-function collect_runs!(group, s, resets)
+function collect_runs!(group, s, resets, allocs)
     runs = map(1:N_RUNS) do _
-        for reset! in values(resets); reset!(); end   # restore every leaf to its developed flow
+        for r in resets; reset_sim!(r.sim, r.fname, r.dir); end   # restore every leaf to its developed flow
         run(group, samples=s, evals=1, seconds=1e6, gcsample=false, verbose=false)
     end
     merged = runs[1]
@@ -22,6 +22,8 @@ function collect_runs!(group, s, resets)
             append!(base.times, runs[r][nk]["sim_step!"].times)
             append!(base.gctimes, runs[r][nk]["sim_step!"].gctimes)
         end
+        # replace BenchmarkTools' single-step alloc count with the block average (representative)
+        haskey(allocs, nk) && (base.allocs = allocs[nk])
     end
     return merged
 end
@@ -32,12 +34,13 @@ function run_benchmarks(cases, log2p, max_steps, ftype, backend, bstr; data_dir=
         println("Benchmarking: $(case)  ($(N_RUNS) runs × $(s) steps)")
         suite = BenchmarkGroup()
         results = BenchmarkGroup([case, "sim_step!", p, s, ft, bstr, git_hash, string(VERSION)])
-        resets = Dict{String,Any}()  # per-size checkpoint-restore closures, called before each run
+        resets = []                  # per-size (sim, fname, dir) to restore before each run
+        allocs = Dict{String,Int}()  # per-size block-averaged per-step allocation counts
         add_to_suite!(suite, getf(case); case=case, p=p, s=s, ft=ft, backend=backend, bstr=bstr,
-            remeasure = remeasure_case(case), developed=developed, resets=resets
+            remeasure = remeasure_case(case), developed=developed, resets=resets, allocs=allocs
         ) # create benchmark
         GC.gc()
-        results[bstr] = collect_runs!(suite[bstr], s, resets) # run!
+        results[bstr] = collect_runs!(suite[bstr], s, resets, allocs) # run!
         fname = "$(case)_$(p...)_$(s)_$(ft)_$(bstr)_$(git_hash)_$VERSION.json"
         BenchmarkTools.save(joinpath(data_dir,fname), results)
     end
