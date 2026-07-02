@@ -30,13 +30,23 @@ macro add_benchmark(args...)
     end |> esc
 end
 
+# Warm up until step count and a wall-clock budget are met and force backend sync
+function warmup!(sim, ft, remeasure, KA_backend; min_steps=50, seconds=2.0)
+    steps = 0; t0 = time()
+    while steps < min_steps || (time() - t0) < seconds
+        sim_step!(sim, typemax(ft); max_steps=10, verbose=false, remeasure=remeasure)
+        KernelAbstractions.synchronize(KA_backend)
+        steps += 10
+    end
+end
+
 function add_to_suite!(suite, sim_function; p=(3,4,5), s=100, ft=Float32, backend=Array, bstr="CPU", remeasure=false)
     suite[bstr] = BenchmarkGroup([bstr])
     for n in p
         sim = sim_function(n, backend; T=ft)
-        sim_step!(sim, typemax(ft); max_steps=50, verbose=false, remeasure=remeasure) # warm up
-        suite[bstr][repr(n)] = BenchmarkGroup([repr(n)])
         KA_backend = KernelAbstractions.get_backend(sim.flow.p)
+        warmup!(sim, ft, remeasure, KA_backend) # JIT + settle device clocks
+        suite[bstr][repr(n)] = BenchmarkGroup([repr(n)])
         @add_benchmark sim_step!($sim, $typemax($ft); max_steps=$s, verbose=false, remeasure=$remeasure) $KA_backend suite[bstr][repr(n)] "sim_step!"
     end
 end
