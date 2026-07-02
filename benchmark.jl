@@ -4,12 +4,17 @@ include("util.jl")
 const N_RUNS = 5  # number of independent runs; each times `max_steps` individual sim_step!s
 
 # Collect per-step timings as N_RUNS runs of `s` steps each. The benchmarkable is a single
-# sim_step! (+ backend sync), so each run's Trial.times holds `s` per-step times. Merge the
-# runs leaf-wise, run-ordered (run r occupies samples (r-1)*s+1 : r*s), into one Trial so the
-# existing save/compare pipeline still applies; compare.jl reshapes to (s, N_RUNS) and reports
-# reference = mean over runs of per-run median, noise = std over runs of that median.
-function collect_runs!(group, s)
-    runs = [run(group, samples=s, evals=1, seconds=1e6, gcsample=false, verbose=false) for _ in 1:N_RUNS]
+# sim_step! (+ backend sync), so each run's Trial.times holds `s` per-step times. Each `reset!`
+# restores its leaf to the developed flow before every run, so all runs time the SAME states
+# (the between-run scatter is pure measurement noise). Merge the runs leaf-wise, run-ordered
+# (run r occupies samples (r-1)*s+1 : r*s), into one Trial so the existing save/compare pipeline
+# still applies; compare.jl reshapes to (s, N_RUNS) and reports reference = min over runs of the
+# per-run median, noise = std over runs of that median.
+function collect_runs!(group, s, resets)
+    runs = map(1:N_RUNS) do _
+        for reset! in values(resets); reset!(); end   # restore every leaf to its developed flow
+        run(group, samples=s, evals=1, seconds=1e6, gcsample=false, verbose=false)
+    end
     merged = runs[1]
     for nk in keys(merged)
         base = merged[nk]["sim_step!"]
@@ -27,11 +32,12 @@ function run_benchmarks(cases, log2p, max_steps, ftype, backend, bstr; data_dir=
         println("Benchmarking: $(case)  ($(N_RUNS) runs × $(s) steps)")
         suite = BenchmarkGroup()
         results = BenchmarkGroup([case, "sim_step!", p, s, ft, bstr, git_hash, string(VERSION)])
+        resets = Dict{String,Any}()  # per-size checkpoint-restore closures, called before each run
         add_to_suite!(suite, getf(case); case=case, p=p, s=s, ft=ft, backend=backend, bstr=bstr,
-            remeasure = remeasure_case(case), developed=developed
+            remeasure = remeasure_case(case), developed=developed, resets=resets
         ) # create benchmark
         GC.gc()
-        results[bstr] = collect_runs!(suite[bstr], s) # run!
+        results[bstr] = collect_runs!(suite[bstr], s, resets) # run!
         fname = "$(case)_$(p...)_$(s)_$(ft)_$(bstr)_$(git_hash)_$VERSION.json"
         BenchmarkTools.save(joinpath(data_dir,fname), results)
     end

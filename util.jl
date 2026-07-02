@@ -46,7 +46,7 @@ function warmup!(sim, ft, remeasure, KA_backend; min_steps=50, seconds=2.0)
     end
 end
 
-function add_to_suite!(suite, sim_function; case="", p=(3,4,5), s=100, ft=Float32, backend=Array, bstr="CPU", remeasure=false, developed="")
+function add_to_suite!(suite, sim_function; case="", p=(3,4,5), s=100, ft=Float32, backend=Array, bstr="CPU", remeasure=false, developed="", resets=nothing)
     suite[bstr] = BenchmarkGroup([bstr])
     for n in p
         # Developed flows are the default. A missing checkpoint is a hard error (fail before the warm-up):
@@ -56,8 +56,16 @@ function add_to_suite!(suite, sim_function; case="", p=(3,4,5), s=100, ft=Float3
             "with `julia --project=. develop.jl` (case=$case, log2p=$n), or pass --developed=\"\" to time the startup transient.")
         sim = sim_function(n, backend; T=ft)
         KA_backend = KernelAbstractions.get_backend(sim.flow.p)
-        warmup!(sim, ft, remeasure, KA_backend)  # JIT + settle device clocks (from rest)
-        isempty(ckpt) || (load!(sim.flow; fname=checkpoint_name(case, n, ft), dir=developed); measure!(sim)) # then start from developed flow
+        # `reset!` restores the developed flow (in-place copyto! load!, VRAM-safe) + remeasures the
+        # body. collect_runs! calls it before each run so all runs time the SAME states — the
+        # between-run scatter is then pure measurement noise. For the transient (no checkpoint) it
+        # is a no-op and the runs march continuously.
+        reset! = let sim=sim, fname=checkpoint_name(case, n, ft), dir=developed
+            isempty(ckpt) ? (() -> nothing) : (() -> (load!(sim.flow; fname, dir); measure!(sim)))
+        end
+        reset!()                                 # start from the developed flow (if any)
+        warmup!(sim, ft, remeasure, KA_backend)  # JIT + settle device clocks from the state that gets timed
+        isnothing(resets) || (resets[repr(n)] = reset!)
         suite[bstr][repr(n)] = BenchmarkGroup([repr(n)])
         # single sim_step! (+ sync in @add_benchmark): each BenchmarkTools sample is one step,
         # so `run(..., samples=s)` times s consecutive steps individually (see collect_runs!).
