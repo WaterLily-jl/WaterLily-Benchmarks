@@ -80,7 +80,7 @@ for (i, case) in enumerate(cases)
         for (i, benchmark) in enumerate(benchmarks)
             datap = benchmark[backends_str[i]][n][f_test]
             tmin = minimum(datap.times)
-            noise_pct = (maximum(datap.times) - tmin) / tmin * 100 # within-run spread; |Δ| below this ≈ noise
+            noise_pct = std(datap.times) / median(datap.times) * 100 # sample coefficient of variation; |Δ| below this ≈ noise
             if !isnothing(speedup_base)
                 speedup = minimum(benchmarks[speedup_base_idx][speedup_base_backend][n][f_test].times) / tmin
             else
@@ -150,7 +150,7 @@ for (i, case) in enumerate(cases)
             highlighters=[hl_base, hl_per_backend...],
             formatters = [fmt_delta_dash, fmt__printf("%.2f", pct2_cols), fmt__printf("%+.1f", [delta_col]),
                           fmt__printf("%.1f", [alloc_col]), fmt__printf("%.1f", [noise_col])])
-        # Treat |Δ| below `Noise` (min→max sample spread) as scatter, not a real change. `Alloc` is only
+        # Treat |Δ| below `Noise` (sample coefficient of variation, std/median) as scatter, not a real change. `Alloc` is only
         # meaningful on SIMD (CPUx01); KA backends (multi-thread CPU, GPU) report kernel-launch bookkeeping.
     end
 
