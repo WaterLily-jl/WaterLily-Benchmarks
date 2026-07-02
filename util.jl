@@ -59,7 +59,9 @@ function add_to_suite!(suite, sim_function; case="", p=(3,4,5), s=100, ft=Float3
         warmup!(sim, ft, remeasure, KA_backend)  # JIT + settle device clocks (from rest)
         isempty(ckpt) || (load!(sim.flow; fname=checkpoint_name(case, n, ft), dir=developed); measure!(sim)) # then start from developed flow
         suite[bstr][repr(n)] = BenchmarkGroup([repr(n)])
-        @add_benchmark sim_step!($sim, $typemax($ft); max_steps=$s, verbose=false, remeasure=$remeasure) $KA_backend suite[bstr][repr(n)] "sim_step!"
+        # single sim_step! (+ sync in @add_benchmark): each BenchmarkTools sample is one step,
+        # so `run(..., samples=s)` times s consecutive steps individually (see collect_runs!).
+        @add_benchmark sim_step!($sim, $typemax($ft); max_steps=1, verbose=false, remeasure=$remeasure) $KA_backend suite[bstr][repr(n)] "sim_step!"
     end
 end
 
