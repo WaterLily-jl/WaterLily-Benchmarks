@@ -97,11 +97,9 @@ update_environment () {
         return
     fi
     echo "Updating environment to Julia $version and compiling WaterLily"
-    dev_pkgs="Pkg.develop(PackageSpec(path=get(ENV, \"WATERLILY_DIR\", \"\")));"
-    # When benchmarking paired Biot branches, dev BiotSavartBCs from the local clone too
-    # (overrides the [sources] GitHub pin) so git_checkout can switch its branch per run.
-    [ -n "${BIOTSAVART_DIR:-}" ] && dev_pkgs="$dev_pkgs Pkg.develop(PackageSpec(path=ENV[\"BIOTSAVART_DIR\"]));"
-    full_args=(--project=$THIS_DIR -e "using Pkg; $dev_pkgs Pkg.update();")
+    # For paired Biot runs, [sources] has already been repointed at $BIOTSAVART_DIR (see below),
+    # so Pkg.update resolves BiotSavartBCs from the local clone; git_checkout picks the branch.
+    full_args=(--project=$THIS_DIR -e "using Pkg; Pkg.develop(PackageSpec(path=get(ENV, \"WATERLILY_DIR\", \"\"))); Pkg.update();")
     julia_cmd
 }
 
@@ -271,6 +269,15 @@ if (( ${#BIOT_VERSIONS[@]} != 0 )); then
     if (( ${#BIOT_VERSIONS[@]} != ${#WL_VERSIONS[@]} )); then
         printf "ERROR: --biotsavart has ${#BIOT_VERSIONS[@]} value(s) but must match --waterlily (${#WL_VERSIONS[@]}).\n" 1>&2; exit 1
     fi
+    # Repoint [sources] at the local clone so its branch is switchable per run (Pkg.develop
+    # cannot override a [sources] pin). Force an environment update to re-resolve, and restore
+    # the original Project.toml on exit.
+    cp "$THIS_DIR/Project.toml" "$THIS_DIR/Project.toml.wbbak"
+    trap 'mv -f "$THIS_DIR/Project.toml.wbbak" "$THIS_DIR/Project.toml" 2>/dev/null' EXIT
+    # match only the [sources] dict entry (`= {...}`), NOT the [deps] UUID string (`= "..."`)
+    sed -i "s|^BiotSavartBCs = {.*|BiotSavartBCs = {path = \"$BIOTSAVART_DIR\"}|" "$THIS_DIR/Project.toml"
+    UPDATE=true
+    echo "Note: -wb repointed [sources] BiotSavartBCs -> $BIOTSAVART_DIR and forced -u true (restored on exit)."
 fi
 
 # Check if Julia versions have been specified, and if so check that juliaup is installed
