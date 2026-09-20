@@ -62,7 +62,7 @@ waterlily_version () {
 
 # Julia command based on juliaup or not
 julia_cmd () {
-    if [[ check_if_juliaup && DEFAULT_VERSION -eq 1 ]]; then
+    if check_if_juliaup && [[ $DEFAULT_VERSION -eq 1 ]]; then
         julia +$version "${full_args[@]}"
     else
         julia "${full_args[@]}"
@@ -99,7 +99,9 @@ update_environment () {
     echo "Updating environment to Julia $version and compiling WaterLily"
     # For paired Biot runs, [sources] has already been repointed at $BIOTSAVART_DIR (see below),
     # so Pkg.update resolves BiotSavartBCs from the local clone; git_checkout picks the branch.
-    full_args=(--project=$THIS_DIR -e "using Pkg; Pkg.develop(PackageSpec(path=get(ENV, \"WATERLILY_DIR\", \"\"))); Pkg.update();")
+    # Load Pkg before activating the project. With `--project`, a Manifest resolved by an older Julia can make
+    # `using Pkg` itself fail (the Julia 1.13 stdlibs need Zstd_jll, which a Manifest from Julia <= 1.12 lacks).
+    full_args=(-e "using Pkg; Pkg.activate(\"$THIS_DIR\"); Pkg.develop(PackageSpec(path=get(ENV, \"WATERLILY_DIR\", \"\"))); Pkg.update();")
     julia_cmd
 }
 

@@ -89,10 +89,18 @@ end
 
 waterlily_dir = get(ENV, "WATERLILY_DIR", "")
 git_hash = read(`git -C $waterlily_dir rev-parse --short HEAD`, String) |> x -> strip(x, '\n')
+# Name of the git ref pointing at `hash`, or `hash` itself if there is none. Several refs can share a commit
+# (e.g. a new branch without commits of its own), so pick deterministically: local branches first, then
+# tags, then remote branches, never a symbolic `HEAD`, and the default branch wins a tie. Branch names
+# containing `/` are kept whole.
 function find_git_ref(hash)
-    all_refs = Dict(split(r, ' ')[1] => split(r, ' ')[end] for r in read(`git -C $waterlily_dir show-ref -d`, String) |> x -> split(x, '\n'))
-    for (k, v) in all_refs
-        startswith(k, hash) && return (split(v, '/')[end] |> x -> split(x, '^')[1])
+    refs = [split(r, ' ') for r in split(read(`git -C $waterlily_dir show-ref -d`, String), '\n') if !isempty(r)]
+    for prefix in ("refs/heads/", "refs/tags/", "refs/remotes/")
+        names = [split(ref[length(prefix)+1:end], '^')[1] for (h, ref) in refs
+                 if startswith(h, hash) && startswith(ref, prefix) && !endswith(ref, "/HEAD")]
+        prefix == "refs/remotes/" && (names = [split(n, '/'; limit=2)[end] for n in names]) # drop the remote name
+        isempty(names) && continue
+        return names[something(findfirst(in(("master", "main")), names), 1)]
     end
     return hash
 end
