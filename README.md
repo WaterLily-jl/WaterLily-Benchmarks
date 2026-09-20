@@ -72,9 +72,10 @@ Each benchmark runs `sim_step!` for `max_steps` iterations (default `25`) as a s
 - **Med [s]** / **Max [s]**: expose the spread. A large gap between `Min` and `Max` flags a noisy run — rerun or widen the warmup if you see this consistently.
 - **Alloc [k]**: number of allocations in the minimum-time sample, divided by 1000.
 - **Cost [ns/DOF/dt]**: `min_time / DOF / max_steps`, normalized cost per cell per time step.
-- **Δ [%]**: cost delta against the same-backend reference row matching the speedup baseline's `(WaterLily ref, Julia, FP)`. The reference row itself prints `-`. Useful to compare WaterLily versions, Julia versions, or precisions while holding the backend fixed.
+- **Δ ± σ [%]**: cost delta against the same-backend reference row matching the speedup baseline's `(WaterLily ref, Julia, FP)`. The reference row itself prints `-`. Useful to compare WaterLily versions, Julia versions, or precisions while holding the backend fixed.
 - **Noise [%]**: scatter of the measurement relative to `Min` (one standard deviation), see below.
-- **Signif [σ]**: significance of Δ, `|Δ| / σ` with `σ = sqrt(Noise_row² + Noise_ref²)`. Δ is the difference of two noisy rows, so its scatter σ combines the `Noise` of the row and of its reference row (it is not Δ divided by the row's own `Noise`). Below about 1 the Δ is indistinguishable from scatter; believe it from about 2 to 3. It is only as reliable as `Noise`: with `Reps = 1` on a machine whose state changes between processes it can be large and wrong.
+- **σ** (shown with Δ): scatter of Δ, `σ = sqrt(Noise_row² + Noise_ref²)`. Δ is the difference of two noisy rows, so σ combines the `Noise` of the row and of its reference row.
+- **Signif [σ]**: significance of Δ, `|Δ| / σ` (it is not Δ divided by the row's own `Noise`). Below about 1 the Δ is indistinguishable from scatter; believe it from about 2 to 3. It is only as reliable as `Noise`: with `Reps = 1` on a machine whose state changes between processes it can be large and wrong.
 - **Speedup**: `time(speedup_base) / min_time`. The speedup baseline defaults to the first row; set explicitly with `--speedup_base`.
 - **GC [%]** (hidden by default; show with `--gc`): GC fraction of the minimum-time sample.
 

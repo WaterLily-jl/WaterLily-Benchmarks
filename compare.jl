@@ -95,10 +95,10 @@ for (i, case) in enumerate(cases)
     log2p_str = sort(log2p_str[1])
     f_test = benchmarks[1].tags[2]
     # Table data. Min/Med/Max [ms] are over the run medians; Min is the reference for Cost/Speedup/Δ
-    header_top    = ["Backend", "WaterLily", "Julia", "FP", "Alloc", "GC",  "Min",  "Med",  "Max",  "Cost",        "Δ",   "Speedup", "Noise", "Signif", "Reps"]
-    header_units  = [""       , ""         , ""     , ""  , "[k]"  , "[%]", "[ms]", "[ms]", "[ms]", "[ns/DOF/dt]", "[%]", ""       , "[%]"  , "[σ]"   , ""    ]
+    header_top    = ["Backend", "WaterLily", "Julia", "FP", "Alloc", "GC",  "Min",  "Med",  "Max",  "Cost",        "Δ ± σ", "Speedup", "Noise", "Signif", "Reps"]
+    header_units  = [""       , ""         , ""     , ""  , "[k]"  , "[%]", "[ms]", "[ms]", "[ms]", "[ns/DOF/dt]", "[%]"  , ""       , "[%]"  , "[σ]"   , ""    ]
     column_labels = [header_top, header_units]
-    data = Matrix{Any}(undef, length(benchmarks), length(header_top))
+    data = Matrix{Any}(undef, length(benchmarks), length(header_top) + 1) # last column (not displayed): σ of Δ
     plotting_data = zeros(length(log2p_str), length(unique(backends_str)), 3) # times, cost, speedups
 
     S = benchmarks[1].tags[4]  # steps per run
@@ -126,7 +126,7 @@ for (i, case) in enumerate(cases)
             gc_pct = datap.gctimes[imin] / datap.times[imin] * 100.0
             waterlily_ref = String(find_git_ref(benchmark.tags[end-1]))
             data[i, :] .= [backends_str[i], waterlily_ref, benchmark.tags[end], benchmark.tags[end-3],
-                datap.allocs / 1000, gc_pct, reference / 1e6, median(rmeds) / 1e6, maximum(rmeds) / 1e6, cost, 0.0, speedup, noise_pct, NaN, repetitions[benchmark]]
+                datap.allocs / 1000, gc_pct, reference / 1e6, median(rmeds) / 1e6, maximum(rmeds) / 1e6, cost, 0.0, speedup, noise_pct, NaN, repetitions[benchmark], NaN]
             versions_key = (waterlily_ref, benchmark.tags[end], benchmark.tags[end-3])
             backend_idx = findall(x -> x == backends_str[i], unique(backends_str))[1]
             plotting_data[k, backend_idx, :] .= (data[i, 7], data[i, 10], data[i, 12])
@@ -142,8 +142,9 @@ for (i, case) in enumerate(cases)
             else
                 ref_cost = Float64(data[ref_idx, 10])
                 data[i, 11] = (Float64(data[i, 10]) - ref_cost) / ref_cost * 100
-                # significance: |Δ| in units of its own scatter σ, the noise of this row and of its reference row combined
-                data[i, 14] = abs(data[i, 11]) / hypot(data[i, 13], data[ref_idx, 13])
+                # σ: scatter of Δ, the noise of this row and of its reference row combined. Signif = |Δ| / σ
+                data[i, end] = hypot(data[i, 13], data[ref_idx, 13])
+                data[i, 14] = abs(data[i, 11]) / data[i, end]
             end
         end
         sorted_cond, sorted_idx = 0 < sort_idx <= length(header_top), nothing
@@ -183,9 +184,10 @@ for (i, case) in enumerate(cases)
         noise_col = ocol_to_dcol[13]
         signif_col = ocol_to_dcol[14]
         fmt_delta_dash = (v, i, j) -> (j in (delta_col, signif_col) && v isa Number && isnan(v)) ? "-" : v
+        fmt_delta_sigma = (v, i, j) -> (j == delta_col && v isa Number) ? @sprintf("%+.1f ± %4.1f", v, data[i, end]) : v
         pretty_table(disp_data; backend=:text, column_labels=disp_labels, column_label_alignment=:c,
             highlighters=[hl_base, hl_per_backend...],
-            formatters = [fmt_delta_dash, fmt__printf("%.2f", pct2_cols), fmt__printf("%+.1f", [delta_col]),
+            formatters = [fmt_delta_dash, fmt_delta_sigma, fmt__printf("%.2f", pct2_cols),
                           fmt__printf("%.1f", [alloc_col]), fmt__printf("%.1f", [noise_col, signif_col])])
         # `Alloc` is only meaningful on SIMD (CPUx01): KA backends report kernel-launch bookkeeping
     end
