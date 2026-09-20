@@ -35,7 +35,7 @@ end
 benchmarks_all = [BenchmarkTools.load(f)[1] for f in benchmarks_list]
 # Merge repetitions (benchmark.sh -r): files with identical tags are the same benchmark run in separate
 # processes. Their per-step times are appended in order, as collect_runs! does within a process, so the
-# statistics below span the processes and `Noise` includes the scatter between them.
+# statistics below span the processes (see `scatter` for `Noise`).
 function merge_repetitions(benchmarks)
     merged, reps = BenchmarkGroup[], IdDict{BenchmarkGroup,Int}()
     for b in benchmarks
@@ -53,6 +53,14 @@ function merge_repetitions(benchmarks)
     return merged, reps
 end
 benchmarks_all, repetitions = merge_repetitions(benchmarks_all)
+# Scatter of the run medians: their std within a process. The runs of a process share its machine state,
+# so with repetitions also take the range of the per-process minima, and return the larger of the two.
+function scatter(rmeds, reps)
+    (reps == 1 || length(rmeds) % reps != 0 || length(rmeds) == reps) && return std(rmeds)
+    R = reshape(rmeds, :, reps) # column = process
+    pmin = minimum(R, dims=1)
+    return max(maximum(std(R, dims=1)), maximum(pmin) - minimum(pmin))
+end
 cases_str = [b.tags[1] for b in benchmarks_all] |> unique
 benchmarks_all_dict = Dict(Pair{String, Vector{BenchmarkGroup}}(k, []) for k in cases_str)
 for b in benchmarks_all
@@ -101,13 +109,13 @@ for (i, case) in enumerate(cases)
         printstyled("▶ log2p = $n\n", bold=true)
         # Per-step times reshaped to (S, runs). Each run's median is robust to step spikes (GC, remeasure),
         # and the min over runs to one-sided contamination. noise = std of the run medians / reference.
-        # With `Reps` > 1 the runs come from several processes, so the noise includes their scatter.
+        # noise = scatter / reference, which with `Reps` > 1 includes the range between processes.
         perstep_ref(datap) = minimum(median(reshape(datap.times, S, length(datap.times) ÷ S), dims=1))
         for (i, benchmark) in enumerate(benchmarks)
             datap = benchmark[backends_str[i]][n][f_test]
             rmeds = vec(median(reshape(datap.times, S, length(datap.times) ÷ S), dims=1))
             reference = minimum(rmeds)
-            noise_pct = std(rmeds) / reference * 100 # |Δ| below this is scatter
+            noise_pct = scatter(rmeds, repetitions[benchmark]) / reference * 100 # |Δ| below this is scatter
             if !isnothing(speedup_base)
                 speedup = perstep_ref(benchmarks[speedup_base_idx][speedup_base_backend][n][f_test]) / reference
             else
