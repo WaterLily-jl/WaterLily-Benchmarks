@@ -33,6 +33,28 @@ for f in benchmarks_list
     println("    ", f)
 end
 benchmarks_all = [BenchmarkTools.load(f)[1] for f in benchmarks_list]
+# Merge repetitions (benchmark.sh --repeats): files with identical tags are the same benchmark measured
+# in separate processes. Their per-step times are concatenated run-ordered, exactly as collect_runs!
+# does within a process, so the run-median statistics below (Min/Med/Max/Noise) span the processes.
+# `Noise` then includes the between-process scatter (machine state: CPU frequency, thermal or power
+# state), which the runs of a single process share and therefore cannot show.
+function merge_repetitions(benchmarks)
+    merged, reps = BenchmarkGroup[], IdDict{BenchmarkGroup,Int}()
+    for b in benchmarks
+        k = findfirst(m -> m.tags == b.tags, merged)
+        if isnothing(k)
+            push!(merged, b); reps[b] = 1
+        else
+            base = merged[k]; reps[base] += 1
+            for bstr in keys(base), n in keys(base[bstr]), f in keys(base[bstr][n])
+                append!(base[bstr][n][f].times, b[bstr][n][f].times)
+                append!(base[bstr][n][f].gctimes, b[bstr][n][f].gctimes)
+            end
+        end
+    end
+    return merged, reps
+end
+benchmarks_all, repetitions = merge_repetitions(benchmarks_all)
 cases_str = [b.tags[1] for b in benchmarks_all] |> unique
 benchmarks_all_dict = Dict(Pair{String, Vector{BenchmarkGroup}}(k, []) for k in cases_str)
 for b in benchmarks_all
@@ -69,14 +91,14 @@ for (i, case) in enumerate(cases)
     f_test = benchmarks[1].tags[2]
     # Get data for PrettyTables. Min/Med/Max are the per-step time (ms) run-median distribution
     # (min, median, max over runs). The reference (for Cost/Speedup/Δ) is Min = min run-median.
-    header_top    = ["Backend", "WaterLily", "Julia", "FP", "Alloc", "GC",  "Min",  "Med",  "Max",  "Cost",        "Δ",   "Speedup", "Noise"]
-    header_units  = [""       , ""         , ""     , ""  , "[k]"  , "[%]", "[ms]", "[ms]", "[ms]", "[ns/DOF/dt]", "[%]", ""       , "[%]"  ]
+    header_top    = ["Backend", "WaterLily", "Julia", "FP", "Alloc", "GC",  "Min",  "Med",  "Max",  "Cost",        "Δ",   "Speedup", "Noise", "Reps"]
+    header_units  = [""       , ""         , ""     , ""  , "[k]"  , "[%]", "[ms]", "[ms]", "[ms]", "[ns/DOF/dt]", "[%]", ""       , "[%]"  , ""    ]
     column_labels = [header_top, header_units]
     data = Matrix{Any}(undef, length(benchmarks), length(header_top))
     plotting_data = zeros(length(log2p_str), length(unique(backends_str)), 3) # times, cost, speedups
 
     S = benchmarks[1].tags[4]  # steps per run
-    n_runs = length(benchmarks[1][backends_str[1]][first(log2p_str)][f_test].times) ÷ S
+    n_runs = length(benchmarks[1][backends_str[1]][first(log2p_str)][f_test].times) ÷ S ÷ repetitions[benchmarks[1]]
     printstyled("Benchmark environment: $case $f_test ($(n_runs) runs × $(S) steps)\n", bold=true)
     for (k, n) in enumerate(log2p_str)
         printstyled("▶ log2p = $n\n", bold=true)
@@ -86,6 +108,9 @@ for (i, case) in enumerate(cases)
         # (external contention, thermal drift) the way BenchmarkTools' min is; on a clean machine
         # it matches the block min within ~2%. noise = std of the run-medians / reference flags
         # an unreliable (contended/drifting) measurement without corrupting the reference.
+        # With repetitions (`Reps` > 1) the run-medians come from separate processes, so the reference
+        # is also the min over processes and the noise includes the between-process scatter. With a
+        # single process (`Reps` = 1) the noise cannot see a machine state that outlives the process.
         perstep_ref(datap) = minimum(median(reshape(datap.times, S, length(datap.times) ÷ S), dims=1))
         for (i, benchmark) in enumerate(benchmarks)
             datap = benchmark[backends_str[i]][n][f_test]
@@ -103,7 +128,7 @@ for (i, case) in enumerate(cases)
             gc_pct = datap.gctimes[imin] / datap.times[imin] * 100.0
             waterlily_ref = String(find_git_ref(benchmark.tags[end-1]))
             data[i, :] .= [backends_str[i], waterlily_ref, benchmark.tags[end], benchmark.tags[end-3],
-                datap.allocs / 1000, gc_pct, reference / 1e6, median(rmeds) / 1e6, maximum(rmeds) / 1e6, cost, 0.0, speedup, noise_pct]
+                datap.allocs / 1000, gc_pct, reference / 1e6, median(rmeds) / 1e6, maximum(rmeds) / 1e6, cost, 0.0, speedup, noise_pct, repetitions[benchmark]]
             versions_key = (waterlily_ref, benchmark.tags[end], benchmark.tags[end-3])
             backend_idx = findall(x -> x == backends_str[i], unique(backends_str))[1]
             plotting_data[k, backend_idx, :] .= (data[i, 7], data[i, 10], data[i, 12])
