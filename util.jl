@@ -1,7 +1,7 @@
 using BenchmarkTools
 using Plots, StatsPlots, LaTeXStrings, CategoricalArrays, Printf, ColorSchemes
 using KernelAbstractions
-using JLD2  # activates WaterLily's save!/load! extension (developed-flow checkpoints)
+using JLD2  # WaterLily's save!/load! extension (checkpoints)
 
 iarg(arg) = occursin.(arg, ARGS) |> findfirst
 iarg(arg, args) = occursin.(arg, args) |> findfirst
@@ -11,10 +11,9 @@ metaparse(x) = eval(Meta.parse(x))
 getf(str) = eval(Symbol(str))
 parsestringlist(x) = filter(!isempty, occursin(',',x) ? split(x,',') : split(x,' '))  .|> x -> filter(x -> !isspace(x), x)
 
-# Developed-flow checkpoints (see develop.jl): one JLD2 per case/size/type, loaded to start
-# timing from a developed flow instead of the startup transient.
+# Developed-flow checkpoints (see develop.jl): one JLD2 file per case, size and float type
 checkpoint_name(case, p, ft) = "$(case)_$(p)_$(ft).jld2"
-remeasure_case(case) = case in ("cylinder", "jelly")  # moving/actuated bodies need remeasure
+remeasure_case(case) = case in ("cylinder", "jelly")  # moving bodies
 
 function parse_cla(args; cases=["tgv"], log2p=[(6,7)], max_steps=[100], ftype=[Float32], backend=Array, data_dir="data/")
     cases = !isnothing(iarg("cases", args)) ? arg_value("cases", args) |> metaparse : cases
@@ -46,15 +45,11 @@ function warmup!(sim, ft, remeasure, KA_backend; min_steps=50, seconds=2.0)
     end
 end
 
-# Restore a developed sim to its checkpoint (in-place copyto! load!, VRAM-safe) + remeasure the
-# body; no-op for the transient (empty dir). collect_runs! calls this before each run so all runs
-# time the same states.
+# Reset a sim to its checkpoint (in-place load!) and remeasure the body; no-op for the transient (empty dir)
 reset_sim!(sim, fname, dir) = !isempty(dir) && (load!(sim.flow; fname, dir); measure!(sim))
 
-# Per-step allocation COUNT averaged over an s-step block. A single step is unrepresentative for
-# variable-V-cycle cases (e.g. jelly): BenchmarkTools measures one step ≈ the common floor, hiding
-# the difference that lives in the multi-step average (master's expensive-V-cycle tail). Averaging
-# over the block restores it. Deterministic, so one pass suffices (no runs/statistics needed).
+# Allocations per step averaged over `s` steps: a single step is not representative when the
+# number of V-cycles varies from step to step (e.g. jelly). Deterministic, so one pass is enough.
 function block_alloc_count(sim, ft, s, remeasure)
     g0 = Base.gc_num()
     for _ in 1:s
@@ -66,23 +61,19 @@ end
 function add_to_suite!(suite, sim_function; case="", p=(3,4,5), s=100, ft=Float32, backend=Array, bstr="CPU", remeasure=false, developed="", resets=nothing, allocs=nothing)
     suite[bstr] = BenchmarkGroup([bstr])
     for n in p
-        # Developed flows are the default. A missing checkpoint is a hard error (fail before the warm-up):
-        # generate it with develop.jl, or opt out of developed flows by passing --developed="".
+        # A missing checkpoint is an error, raised before the warm-up
         ckpt = isempty(developed) ? "" : joinpath(developed, checkpoint_name(case, n, ft))
         !isempty(ckpt) && !isfile(ckpt) && error("No developed-flow checkpoint at '$ckpt'. Generate it first " *
             "with `julia --project=. develop.jl` (case=$case, log2p=$n), or pass --developed=\"\" to time the startup transient.")
         sim = sim_function(n, backend; T=ft)
         KA_backend = KernelAbstractions.get_backend(sim.flow.p)
         fname = checkpoint_name(case, n, ft)
-        reset_sim!(sim, fname, developed)        # start from the developed flow (if any), so warm-up runs from it
-        warmup!(sim, ft, remeasure, KA_backend)  # JIT + settle device clocks from the developed state
-        # allocations are a representative developed-flow block (a few steps past the checkpoint is fine);
-        # the per-run reset in collect_runs! is what makes the timed runs all start from the same time.
+        reset_sim!(sim, fname, developed)        # warm up from the developed flow (if any)
+        warmup!(sim, ft, remeasure, KA_backend)  # JIT and settle the device clocks
         isnothing(allocs) || (allocs[repr(n)] = block_alloc_count(sim, ft, s, remeasure))
         isnothing(resets) || push!(resets, (sim=sim, fname=fname, dir=developed))
         suite[bstr][repr(n)] = BenchmarkGroup([repr(n)])
-        # single sim_step! (+ sync in @add_benchmark): each BenchmarkTools sample is one step,
-        # so `run(..., samples=s)` times s consecutive steps individually (see collect_runs!).
+        # one sample = one sim_step! (+ sync), so `run(..., samples=s)` times `s` consecutive steps
         @add_benchmark sim_step!($sim, $typemax($ft); max_steps=1, verbose=false, remeasure=$remeasure) $KA_backend suite[bstr][repr(n)] "sim_step!"
     end
 end
@@ -269,8 +260,7 @@ tests_dets = Dict(
     "jelly" => Dict("size" => (1, 1, 4), "title" => "Jelly"),
 )
 
-# Time (in tU/L) each case is advanced to reach a developed flow before checkpointing (develop.jl):
-# jelly = 10 actuation periods (10π); tgv = 10 (of its ~20 TU run); bluff/static bodies = 100.
+# Time [tU/L] to a developed flow (develop.jl): 10 jelly periods, half the ~20 TU tgv run, 100 for bluff bodies
 develop_time = Dict(
     "tgv" => 10.0, "sphere" => 100.0, "cylinder" => 100.0, "donut" => 100.0, "jelly" => 10*Float64(π),
 )

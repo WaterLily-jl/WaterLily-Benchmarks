@@ -1,9 +1,8 @@
 include("cases.jl")
 include("util.jl")
-using GLMakie  # Makie backend → activates WaterLily's `viz!` extension (3D vorticity render)
+using GLMakie  # WaterLily's `viz!` extension
 
-# Render one image per developed checkpoint (vorticity, via WaterLily's Makie `viz!`) as a visual
-# sanity check of each case. Float64 cases are skipped. Images go in `checkpoints/viz/`.
+# Render a vorticity image per checkpoint into `checkpoints/viz/` as a visual check. Float64 cases are skipped.
 function visualize_checkpoints(cases, log2p, ftype, backend; ckpt_dir="checkpoints/", img_dir="checkpoints/viz/")
     mkpath(img_dir)
     for (case, ps, ft) in zip(cases, log2p, ftype)

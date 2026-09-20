@@ -1,18 +1,14 @@
 include("cases.jl")
 include("util.jl")
 
-const N_RUNS = 5  # number of independent runs; each times `max_steps` individual sim_step!s
+const N_RUNS = 5  # runs per benchmark, each timing `max_steps` individual steps
 
-# Collect per-step timings as N_RUNS runs of `s` steps each. The benchmarkable is a single
-# sim_step! (+ backend sync), so each run's Trial.times holds `s` per-step times. Each `reset!`
-# restores its leaf to the developed flow before every run, so all runs time the SAME states
-# (the between-run scatter is pure measurement noise). Merge the runs leaf-wise, run-ordered
-# (run r occupies samples (r-1)*s+1 : r*s), into one Trial so the existing save/compare pipeline
-# still applies; compare.jl reshapes to (s, N_RUNS) and reports reference = min over runs of the
-# per-run median, noise = std over runs of that median.
+# N_RUNS runs of `s` per-step times. Every run is reset to the developed flow, so all runs time the
+# same states. The runs of each case size are appended in order into one Trial, which compare.jl
+# reshapes to (s, N_RUNS).
 function collect_runs!(group, s, resets, allocs)
     runs = map(1:N_RUNS) do _
-        for r in resets; reset_sim!(r.sim, r.fname, r.dir); end   # restore every leaf to its developed flow
+        for r in resets; reset_sim!(r.sim, r.fname, r.dir); end   # every case size back to its developed flow
         run(group, samples=s, evals=1, seconds=1e6, gcsample=false, verbose=false)
     end
     merged = runs[1]
@@ -22,7 +18,7 @@ function collect_runs!(group, s, resets, allocs)
             append!(base.times, runs[r][nk]["sim_step!"].times)
             append!(base.gctimes, runs[r][nk]["sim_step!"].gctimes)
         end
-        # replace BenchmarkTools' single-step alloc count with the block average (representative)
+        # block-averaged allocations instead of the single-step count
         haskey(allocs, nk) && (base.allocs = allocs[nk])
     end
     return merged
@@ -34,8 +30,8 @@ function run_benchmarks(cases, log2p, max_steps, ftype, backend, bstr; data_dir=
         println("Benchmarking: $(case)  ($(N_RUNS) runs × $(s) steps)")
         suite = BenchmarkGroup()
         results = BenchmarkGroup([case, "sim_step!", p, s, ft, bstr, git_hash, string(VERSION)])
-        resets = []                  # per-size (sim, fname, dir) to restore before each run
-        allocs = Dict{String,Int}()  # per-size block-averaged per-step allocation counts
+        resets = []                  # per-size (sim, fname, dir) to reset before each run
+        allocs = Dict{String,Int}()  # per-size block-averaged allocations per step
         add_to_suite!(suite, getf(case); case=case, p=p, s=s, ft=ft, backend=backend, bstr=bstr,
             remeasure = remeasure_case(case), developed=developed, resets=resets, allocs=allocs
         ) # create benchmark
@@ -49,13 +45,11 @@ end
 cases, log2p, max_steps, ftype, backend, data_dir = parse_cla(ARGS;
     cases=["tgv", "jelly"], log2p=[(6,7), (5,6)], max_steps=[25, 25], ftype=[Float32, Float32], backend=Array, data_dir="data/"
 )
-# `--developed=<dir>` (default "checkpoints"): time sim_step! from the pre-developed flows in <dir>
-# (see develop.jl). A missing checkpoint is a hard error; pass --developed="" to time the transient.
-# Match the flag exactly — "developed" can appear inside another value (e.g. a data_dir ".../-developed").
+# `--developed=<dir>`: time from the checkpoints in <dir> (see develop.jl); "" times the transient.
+# Exact flag match, since "developed" can also appear inside another value (e.g. a data_dir).
 _devi = findfirst(a -> startswith(a, "--developed="), ARGS)
 developed = isnothing(_devi) ? "checkpoints" : split(ARGS[_devi], "="; limit=2)[2]
-# `--rep=<n>` (benchmark.sh --repeats): repetition index, appended to the file name so that the
-# repetitions of a benchmark (same tags, separate processes) do not overwrite each other.
+# `--rep=<n>` (benchmark.sh -r): repetition index, appended to the file name
 _repi = findfirst(a -> startswith(a, "--rep="), ARGS)
 rep = isnothing(_repi) ? "" : "_r" * split(ARGS[_repi], "="; limit=2)[2]
 
