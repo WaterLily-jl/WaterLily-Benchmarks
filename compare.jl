@@ -54,12 +54,11 @@ function merge_repetitions(benchmarks)
 end
 benchmarks_all, repetitions = merge_repetitions(benchmarks_all)
 # Scatter of the run medians: their std within a process. The runs of a process share its machine state,
-# so with repetitions also take the range of the per-process minima, and return the larger of the two.
+# so with repetitions take the std of the per-process minima, with the within-process std as a floor.
 function scatter(rmeds, reps)
     (reps == 1 || length(rmeds) % reps != 0 || length(rmeds) == reps) && return std(rmeds)
     R = reshape(rmeds, :, reps) # column = process
-    pmin = minimum(R, dims=1)
-    return max(maximum(std(R, dims=1)), maximum(pmin) - minimum(pmin))
+    return max(maximum(std(R, dims=1)), std(minimum(R, dims=1)))
 end
 cases_str = [b.tags[1] for b in benchmarks_all] |> unique
 benchmarks_all_dict = Dict(Pair{String, Vector{BenchmarkGroup}}(k, []) for k in cases_str)
@@ -109,7 +108,7 @@ for (i, case) in enumerate(cases)
         printstyled("▶ log2p = $n\n", bold=true)
         # Per-step times reshaped to (S, runs). Each run's median is robust to step spikes (GC, remeasure),
         # and the min over runs to one-sided contamination. noise = std of the run medians / reference.
-        # noise = scatter / reference, which with `Reps` > 1 includes the range between processes.
+        # noise = scatter / reference, which with `Reps` > 1 includes the std between processes.
         perstep_ref(datap) = minimum(median(reshape(datap.times, S, length(datap.times) ÷ S), dims=1))
         for (i, benchmark) in enumerate(benchmarks)
             datap = benchmark[backends_str[i]][n][f_test]
