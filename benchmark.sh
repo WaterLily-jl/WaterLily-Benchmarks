@@ -62,7 +62,7 @@ waterlily_version () {
 
 # Julia command based on juliaup or not
 julia_cmd () {
-    if [[ check_if_juliaup && DEFAULT_VERSION -eq 1 ]]; then
+    if check_if_juliaup && [[ $DEFAULT_VERSION -eq 1 ]]; then
         julia +$version "${full_args[@]}"
     else
         julia "${full_args[@]}"
@@ -96,8 +96,9 @@ update_environment () {
         return
     fi
     echo "Updating environment to Julia $version and compiling WaterLily"
-    # With -bs, [sources] already points at $BIOTSAVART_DIR, so Pkg.update resolves the local clone
-    full_args=(--project=$THIS_DIR -e "using Pkg; Pkg.develop(PackageSpec(path=get(ENV, \"WATERLILY_DIR\", \"\"))); Pkg.update();")
+    # With -bs, [sources] already points at $BIOTSAVART_DIR, so Pkg.update resolves the local clone.
+    # Pkg is loaded before activating: with --project, a Manifest from Julia <= 1.12 breaks `using Pkg` on 1.13.
+    full_args=(-e "using Pkg; Pkg.activate(\"$THIS_DIR\"); Pkg.develop(PackageSpec(path=get(ENV, \"WATERLILY_DIR\", \"\"))); Pkg.update();")
     julia_cmd
 }
 
