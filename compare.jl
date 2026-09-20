@@ -1,7 +1,7 @@
 # Run with
 # julia --project compare.jl --data_dir="data/benchmark" --plot_dir="plots" --patterns=\["tgv","sphere","cylinder"\] --sort=1
 # julia --project compare.jl --plot_dir="plots" --sort=1 $(find data/ \( -name "tgv*json" -o -name "sphere*json" -o -name "cylinder*json" \) -printf "%T@ %Tc %p\n" | sort -n | awk '{print $7}')
-# julia --project compare.jl --data_dir="data/benchmark" --plot_dir="plots" --patterns=\["tgv","sphere","cylinder"\] --speedup_base="CPUx01" --sort=11
+# julia --project compare.jl --data_dir="data/benchmark" --plot_dir="plots" --patterns=\["tgv","sphere","cylinder"\] --speedup_base="CPUx01" --sort=12
 
 using BenchmarkTools, PrettyTables, Statistics
 include("util.jl")
@@ -95,8 +95,8 @@ for (i, case) in enumerate(cases)
     log2p_str = sort(log2p_str[1])
     f_test = benchmarks[1].tags[2]
     # Table data. Min/Med/Max [ms] are over the run medians; Min is the reference for Cost/Speedup/Δ
-    header_top    = ["Backend", "WaterLily", "Julia", "FP", "Alloc", "GC",  "Min",  "Med",  "Max",  "Cost",        "Δ ± σ", "Speedup", "Noise", "Signif", "Reps"]
-    header_units  = [""       , ""         , ""     , ""  , "[k]"  , "[%]", "[ms]", "[ms]", "[ms]", "[ns/DOF/dt]", "[%]"  , ""       , "[%]"  , "[σ]"   , ""    ]
+    header_top    = ["Backend", "WaterLily", "Julia", "FP", "Alloc", "GC",  "Min",  "Med",  "Max",  "Cost",        "Speedup", "Δ ± σ", "Noise", "Signif", "Reps"]
+    header_units  = [""       , ""         , ""     , ""  , "[k]"  , "[%]", "[ms]", "[ms]", "[ms]", "[ns/DOF/dt]", ""       , "[%]"  , "[%]"  , "[|Δ|/σ]", ""    ]
     column_labels = [header_top, header_units]
     data = Matrix{Any}(undef, length(benchmarks), length(header_top) + 1) # last column (not displayed): σ of Δ
     plotting_data = zeros(length(log2p_str), length(unique(backends_str)), 3) # times, cost, speedups
@@ -126,10 +126,10 @@ for (i, case) in enumerate(cases)
             gc_pct = datap.gctimes[imin] / datap.times[imin] * 100.0
             waterlily_ref = String(find_git_ref(benchmark.tags[end-1]))
             data[i, :] .= [backends_str[i], waterlily_ref, benchmark.tags[end], benchmark.tags[end-3],
-                datap.allocs / 1000, gc_pct, reference / 1e6, median(rmeds) / 1e6, maximum(rmeds) / 1e6, cost, 0.0, speedup, noise_pct, NaN, repetitions[benchmark], NaN]
+                datap.allocs / 1000, gc_pct, reference / 1e6, median(rmeds) / 1e6, maximum(rmeds) / 1e6, cost, speedup, 0.0, noise_pct, NaN, repetitions[benchmark], NaN]
             versions_key = (waterlily_ref, benchmark.tags[end], benchmark.tags[end-3])
             backend_idx = findall(x -> x == backends_str[i], unique(backends_str))[1]
-            plotting_data[k, backend_idx, :] .= (data[i, 7], data[i, 10], data[i, 12])
+            plotting_data[k, backend_idx, :] .= (data[i, 7], data[i, 10], data[i, 11])
         end
         ref_wl, ref_julia, ref_prec = data[speedup_base_idx, 2], data[speedup_base_idx, 3], data[speedup_base_idx, 4]
         for i in axes(data, 1)
@@ -138,13 +138,13 @@ for (i, case) in enumerate(cases)
                                      data[j, 3] == ref_julia && data[j, 4] == ref_prec,
                                 axes(data, 1))
             if isnothing(ref_idx) || i == ref_idx
-                data[i, 11] = NaN
+                data[i, 12] = NaN
             else
                 ref_cost = Float64(data[ref_idx, 10])
-                data[i, 11] = (Float64(data[i, 10]) - ref_cost) / ref_cost * 100
+                data[i, 12] = (Float64(data[i, 10]) - ref_cost) / ref_cost * 100
                 # σ: scatter of Δ, the noise of this row and of its reference row combined. Signif = |Δ| / σ
                 data[i, end] = hypot(data[i, 13], data[ref_idx, 13])
-                data[i, 14] = abs(data[i, 11]) / data[i, end]
+                data[i, 14] = abs(data[i, 12]) / data[i, end]
             end
         end
         sorted_cond, sorted_idx = 0 < sort_idx <= length(header_top), nothing
@@ -178,8 +178,8 @@ for (i, case) in enumerate(cases)
         disp_data = data[:, keep_cols]
         disp_labels = [header_top[keep_cols], header_units[keep_cols]]
         ocol_to_dcol = Dict(oi => di for (di, oi) in enumerate(keep_cols))
-        pct2_cols = [ocol_to_dcol[c] for c in [6,7,8,9,10,12] if haskey(ocol_to_dcol, c)]
-        delta_col = ocol_to_dcol[11]
+        pct2_cols = [ocol_to_dcol[c] for c in [6,7,8,9,10,11] if haskey(ocol_to_dcol, c)]
+        delta_col = ocol_to_dcol[12]
         alloc_col = ocol_to_dcol[5]
         noise_col = ocol_to_dcol[13]
         signif_col = ocol_to_dcol[14]
