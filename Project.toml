@@ -18,6 +18,6 @@ StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 StatsPlots = "f3b207a7-027a-5e70-b257-86293d7955fd"
 WaterLily = "ed894a53-35f9-47f1-b17f-85db9237eebd"
 
-# BiotSavartBCs is unregistered — pin it to the GitHub repo (used by the `jelly` case).
+# BiotSavartBCs is unregistered (used by `jelly`)
 [sources]
 BiotSavartBCs = {url = "https://github.com/WaterLily-jl/BiotSavartBCs.jl", rev = "main"}

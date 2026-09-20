@@ -57,6 +57,6 @@ function jelly(p, backend; Re=5e2, U=1, T=Float32)
                       (x,t)->A(t).*x + B(t) + C(t))
     plane = AutoBody((x,t)->x[3] - h, (x, t) -> x + C(t))
     body =  sphere - plane
-    # Biot-Savart (mass-conserving) open boundaries for the jelly. See BiotSavartBCs.jl.
+    # Biot-Savart open boundaries (BiotSavartBCs.jl)
     BiotSimulation((n, n, 4n), (0, 0, -U), R; ν, body, T, mem=backend)
 end

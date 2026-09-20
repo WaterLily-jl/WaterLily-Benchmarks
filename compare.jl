@@ -67,8 +67,7 @@ for (i, case) in enumerate(cases)
     length(unique(log2p_str)) != 1 && @error "Case sizes mismatch."
     log2p_str = sort(log2p_str[1])
     f_test = benchmarks[1].tags[2]
-    # Get data for PrettyTables. Min/Med/Max are the per-step time (ms) run-median distribution
-    # (min, median, max over runs). The reference (for Cost/Speedup/Δ) is Min = min run-median.
+    # Table data. Min/Med/Max [ms] are over the run medians; Min is the reference for Cost/Speedup/Δ
     header_top    = ["Backend", "WaterLily", "Julia", "FP", "Alloc", "GC",  "Min",  "Med",  "Max",  "Cost",        "Δ",   "Speedup", "Noise"]
     header_units  = [""       , ""         , ""     , ""  , "[k]"  , "[%]", "[ms]", "[ms]", "[ms]", "[ns/DOF/dt]", "[%]", ""       , "[%]"  ]
     column_labels = [header_top, header_units]
@@ -80,25 +79,21 @@ for (i, case) in enumerate(cases)
     printstyled("Benchmark environment: $case $f_test ($(n_runs) runs × $(S) steps)\n", bold=true)
     for (k, n) in enumerate(log2p_str)
         printstyled("▶ log2p = $n\n", bold=true)
-        # Per-step reduction: reshape the flat per-step times to (S, runs) — column r is run r —
-        # take each run's median (robust to within-run step spikes: GC, remeasure), then
-        # reference = MIN of those medians. min-over-runs is robust to one-sided contamination
-        # (external contention, thermal drift) the way BenchmarkTools' min is; on a clean machine
-        # it matches the block min within ~2%. noise = std of the run-medians / reference flags
-        # an unreliable (contended/drifting) measurement without corrupting the reference.
+        # Per-step times reshaped to (S, runs). Each run's median is robust to step spikes (GC, remeasure),
+        # and the min over runs to one-sided contamination. noise = std of the run medians / reference.
         perstep_ref(datap) = minimum(median(reshape(datap.times, S, length(datap.times) ÷ S), dims=1))
         for (i, benchmark) in enumerate(benchmarks)
             datap = benchmark[backends_str[i]][n][f_test]
             rmeds = vec(median(reshape(datap.times, S, length(datap.times) ÷ S), dims=1))
             reference = minimum(rmeds)
-            noise_pct = std(rmeds) / reference * 100 # between-run scatter of the run-medians; |Δ| below this ≈ noise
+            noise_pct = std(rmeds) / reference * 100 # |Δ| below this is scatter
             if !isnothing(speedup_base)
                 speedup = perstep_ref(benchmarks[speedup_base_idx][speedup_base_backend][n][f_test]) / reference
             else
                 speedup = i == 1 ? 1.0 : perstep_ref(benchmarks[1][backends_str[1]][n][f_test]) / reference
             end
             N = prod(tests_dets[case]["size"]) .* 2 .^ (3 .* eval(Meta.parse.(n)))
-            cost = reference / N  # reference is already per-step ns
+            cost = reference / N  # per-step ns
             imin = argmin(datap.times)
             gc_pct = datap.gctimes[imin] / datap.times[imin] * 100.0
             waterlily_ref = String(find_git_ref(benchmark.tags[end-1]))
@@ -161,8 +156,7 @@ for (i, case) in enumerate(cases)
             highlighters=[hl_base, hl_per_backend...],
             formatters = [fmt_delta_dash, fmt__printf("%.2f", pct2_cols), fmt__printf("%+.1f", [delta_col]),
                           fmt__printf("%.1f", [alloc_col]), fmt__printf("%.1f", [noise_col])])
-        # Treat |Δ| below `Noise` (between-run scatter of the run-medians) as scatter, not a real change. `Alloc` is only
-        # meaningful on SIMD (CPUx01); KA backends (multi-thread CPU, GPU) report kernel-launch bookkeeping.
+        # `Alloc` is only meaningful on SIMD (CPUx01): KA backends report kernel-launch bookkeeping
     end
 
     # Plotting each configuration of WaterLily version, Julia version and precision in benchamarks

@@ -74,11 +74,10 @@ git_checkout () {
         echo "Git checkout to WaterLily $wl_version"
         git -C "$WATERLILY_DIR" checkout $wl_version
     fi
-    # Paired BiotSavartBCs checkout AFTER WaterLily, so branches needing new WaterLily
-    # symbols (e.g. combined-tol needs l2n_tol) resolve against the right WaterLily.
-    if [ -n "${biot_version}" ]; then
-        echo "Git checkout to BiotSavartBCs $biot_version"
-        git -C "$BIOTSAVART_DIR" checkout $biot_version
+    # BiotSavartBCs after WaterLily: its branch may need new WaterLily symbols
+    if [ -n "${bs_version}" ]; then
+        echo "Git checkout to BiotSavartBCs $bs_version"
+        git -C "$BIOTSAVART_DIR" checkout $bs_version
     fi
 }
 
@@ -97,8 +96,7 @@ update_environment () {
         return
     fi
     echo "Updating environment to Julia $version and compiling WaterLily"
-    # For paired Biot runs, [sources] has already been repointed at $BIOTSAVART_DIR (see below),
-    # so Pkg.update resolves BiotSavartBCs from the local clone; git_checkout picks the branch.
+    # With -bs, [sources] already points at $BIOTSAVART_DIR, so Pkg.update resolves the local clone
     full_args=(--project=$THIS_DIR -e "using Pkg; Pkg.develop(PackageSpec(path=get(ENV, \"WATERLILY_DIR\", \"\"))); Pkg.update();")
     julia_cmd
 }
@@ -118,7 +116,7 @@ display_info () {
  - Benchmark dir: $DATA_DIR
  - Julia:         ${VERSIONS[@]}
  - Backends:      ${BACKENDS[@]}"
-    [ ${#BIOT_VERSIONS[@]} -ne 0 ] && echo " - BiotSavartBCs: ${BIOT_VERSIONS[@]} (dir: ${BIOTSAVART_DIR:-$BS_DIR})"
+    [ ${#BS_VERSIONS[@]} -ne 0 ] && echo " - BiotSavartBCs: ${BS_VERSIONS[@]} (dir: ${BIOTSAVART_DIR:-$BS_DIR})"
     if [[ " ${BACKENDS[*]} " =~ [[:space:]]'Array'[[:space:]] ]]; then
         echo " - CPU threads:   ${THREADS[@]}"
     fi
@@ -139,11 +137,11 @@ WL_DIR=""
 BS_DIR=""
 DATA_DIR="data/benchmark/"
 WL_VERSIONS=()
-BIOT_VERSIONS=()                                          # --biotsavart/-wb: BiotSavartBCs branches, paired 1:1 with --waterlily
+BS_VERSIONS=()                                            # -bs: BiotSavartBCs versions, paired 1:1 with -w
 BACKENDS=('Array' 'CuArray')
 THREADS=('4')
 UPDATE=false
-DEVELOPED="checkpoints"                                   # --developed=<dir>: time from developed-flow checkpoints (default); -dev "" for transient
+DEVELOPED="checkpoints"                                   # -dev <dir>: developed-flow checkpoints; "" times the transient
 # Default sweep (run when -c is omitted) and per-case defaults for omitted -p/-s/-ft.
 CASES=('tgv' 'jelly')
 LOG2P=(); MAXSTEPS=(); FTYPE=()                            # provided -p/-s/-ft (empty => default)
@@ -161,11 +159,11 @@ case "$1" in
     WL_VERSIONS=($2)
     shift
     ;;
-    --biotsavart|-wb)
-    BIOT_VERSIONS=($2)
+    --biotsavart|-bs)
+    BS_VERSIONS=($2)
     shift
     ;;
-    --biotsavart_dir|-wbd)
+    --biotsavart_dir|-bsd)
     BS_DIR=($2)
     shift
     ;;
@@ -257,27 +255,23 @@ else
     WL_VERSIONS=($(waterlily_version))
 fi
 
-# Paired BiotSavartBCs versions (optional). Needs a local clone (--biotsavart_dir/-wbd or
-# $BIOTSAVART_DIR) and one Biot branch per WaterLily version. Used to benchmark criterion
-# changes that span both packages (e.g. jelly: WaterLily master+Biot main vs poisson-rms-tol+combined-tol).
-if (( ${#BIOT_VERSIONS[@]} != 0 )); then
+# Paired BiotSavartBCs versions (optional): one per WaterLily version, from a local clone (-bsd or $BIOTSAVART_DIR)
+if (( ${#BS_VERSIONS[@]} != 0 )); then
     [ -n "$BS_DIR" ] && export BIOTSAVART_DIR=$BS_DIR
     if [ -z "${BIOTSAVART_DIR:-}" ]; then
-        printf "ERROR: --biotsavart/-wb needs a local BiotSavartBCs clone via --biotsavart_dir/-wbd or \$BIOTSAVART_DIR.\n" 1>&2; exit 1
+        printf "ERROR: --biotsavart/-bs needs a local BiotSavartBCs clone via --biotsavart_dir/-bsd or \$BIOTSAVART_DIR.\n" 1>&2; exit 1
     fi
     export BIOTSAVART_DIR=$(realpath -e "$BIOTSAVART_DIR")
-    if (( ${#BIOT_VERSIONS[@]} != ${#WL_VERSIONS[@]} )); then
-        printf "ERROR: --biotsavart has ${#BIOT_VERSIONS[@]} value(s) but must match --waterlily (${#WL_VERSIONS[@]}).\n" 1>&2; exit 1
+    if (( ${#BS_VERSIONS[@]} != ${#WL_VERSIONS[@]} )); then
+        printf "ERROR: --biotsavart has ${#BS_VERSIONS[@]} value(s) but must match --waterlily (${#WL_VERSIONS[@]}).\n" 1>&2; exit 1
     fi
-    # Repoint [sources] at the local clone so its branch is switchable per run (Pkg.develop
-    # cannot override a [sources] pin). Force an environment update to re-resolve, and restore
-    # the original Project.toml on exit.
-    cp "$THIS_DIR/Project.toml" "$THIS_DIR/Project.toml.wbbak"
-    trap 'mv -f "$THIS_DIR/Project.toml.wbbak" "$THIS_DIR/Project.toml" 2>/dev/null' EXIT
-    # match only the [sources] dict entry (`= {...}`), NOT the [deps] UUID string (`= "..."`)
+    # Pkg.develop cannot override a [sources] pin: repoint it at the local clone, force -u true, restore on exit
+    cp "$THIS_DIR/Project.toml" "$THIS_DIR/Project.toml.bsbak"
+    trap 'mv -f "$THIS_DIR/Project.toml.bsbak" "$THIS_DIR/Project.toml" 2>/dev/null' EXIT
+    # match the [sources] entry (`= {...}`), not the [deps] UUID (`= "..."`)
     sed -i "s|^BiotSavartBCs = {.*|BiotSavartBCs = {path = \"$BIOTSAVART_DIR\"}|" "$THIS_DIR/Project.toml"
     UPDATE=true
-    echo "Note: -wb repointed [sources] BiotSavartBCs -> $BIOTSAVART_DIR and forced -u true (restored on exit)."
+    echo "Note: -bs repointed [sources] BiotSavartBCs -> $BIOTSAVART_DIR and forced -u true (restored on exit)."
 fi
 
 # Check if Julia versions have been specified, and if so check that juliaup is installed
@@ -300,14 +294,14 @@ LOG2P=$(join_array_tuple_comma "${LOG2P[*]}")
 MAXSTEPS=$(join_array_comma "${MAXSTEPS[*]}")
 FTYPE=$(join_array_comma "${FTYPE[*]}")
 args_cases="--cases=$CASES --log2p=$LOG2P --max_steps=$MAXSTEPS --ftype=$FTYPE --data_dir=$DATA_DIR"
-args_cases="$args_cases --developed=$DEVELOPED"  # always forwarded so -dev "" reaches benchmark.jl (transient)
+args_cases="$args_cases --developed=$DEVELOPED"  # always forwarded, so -dev "" reaches benchmark.jl
 
 # Benchmarks
 for version in "${VERSIONS[@]}" ; do
     echo "Running with Julia version $version from $( which julia )"
     for i in "${!WL_VERSIONS[@]}" ; do
         wl_version="${WL_VERSIONS[$i]}"
-        biot_version="${BIOT_VERSIONS[$i]:-}"
+        bs_version="${BS_VERSIONS[$i]:-}"
         git_checkout
         for backend in "${BACKENDS[@]}" ; do
             if [ "${backend}" == "Array" ]; then
