@@ -8,6 +8,7 @@ Default benchmark for quick validations on the TGV and Jelly test cases.
 sh benchmark.sh
 julia --project compare.jl
 ```
+On a laptop, or any machine whose clocks change with temperature or power, add `-r 3` to repeat the sweep in separate processes (see [Measurement methodology](#measurement-methodology)).
 
 > **_NOTE:_** For Ubuntu users: The default shell (`/bin/sh`) in Ubuntu points to `dash`, and not `bash`. Executing the `sh benchmark.sh` calls `dash`  and results in a `[Bad Substitution Error](benchmark.sh: 2: Bad substitution)`. The simple workaround is to call the shell script directly `./benchmark.sh` followed by the desired arguments. This applies to all the examples below.
 
@@ -39,6 +40,7 @@ The accepted command line arguments are (parenthesis for short version):
     would generate benchmark for all these combinations of parameters.
  - Case arguments: `--cases(-c)`, `--log2p(-p)`, `--max_steps(-s)`, `--ftype(-ft)`. The `--cases` argument specifies which cases to benchmark, and it can be again a list of different cases. The name of the cases needs to be defined in [cases.jl](cases.jl), for example `tgv` or `jelly`. The current available cases are `"tgv sphere cylinder donut jelly"`. Hence, to add a new case first define the function that returns a `Simulation` in [cases.jl](./cases.jl), and then it can be called using the `--cases(-c)` list argument. Case size, number of time steps, and float data type are then defined for each case (`-p`, `-s`, `-ft`, respectively). Each of `-p`, `-s`, `-ft` may either provide one value per case (an array matching the length of `-c`), or a single value that is broadcast to every case. Omitted arguments use the defaults at the top of [benchmark.sh](./benchmark.sh): the per-case size map `DEF_LOG2P` (currently `tgv`→`6,7`, `jelly`→`5,6`, `sphere`→`3,4`, `cylinder`→`4,5`) and the uniform `DEF_MAXSTEPS` (`25`) and `DEF_FTYPE` (`Float32`). So `-c "tgv sphere" -ft "Float64"` runs `tgv` at `6,7` and `sphere` at `3,4`, both in `Float64`. A case with no entry in `DEF_LOG2P` (e.g. `donut`) errors on an omitted `-p`, with a hint to add it there or pass `-p` explicitly; `-s`/`-ft` always default. Omitting `-c` runs only the default sweep (`tgv jelly`).
  - BiotSavartBCs pairing (optional): `--biotsavart(-bs)`, `--biotsavart_dir(-bsd)`. Some cases (e.g. `jelly`) solve the pressure Poisson equation through [BiotSavartBCs.jl](https://github.com/WaterLily-jl/BiotSavartBCs.jl)'s own `mom_project!` rather than WaterLily's `solver!`, so benchmarking a change that spans both packages (such as the Poisson stopping criterion) requires switching BiotSavartBCs in tandem with WaterLily. Pass `-bs` a list of BiotSavartBCs branches/tags/hashes paired 1:1 with `-w` (e.g. `-w "master poisson-rms-tol" -bs "main combined-tol"`) and point `-bsd` (or `$BIOTSAVART_DIR`) at a local BiotSavartBCs clone. Each run checks out the WaterLily version first, then its paired BiotSavartBCs version (order matters when the BiotSavartBCs branch needs new WaterLily symbols). Omit `-bs` to use the BiotSavartBCs pinned in `Project.toml`'s `[sources]`.
+ - Repetitions: `--repeats(-r)`. Repeats the whole sweep `N` times (default `1`), each benchmark in a new Julia process, reversing the Julia/WaterLily version order on even repetitions. The files get a `_r<n>` suffix and [compare.jl](./compare.jl) merges the repetitions of a benchmark into a single row (the `Reps` column shows how many were merged). Use it when the machine state can change between processes, which is typical on laptops (CPU frequency, thermal and power limits): the runs of a single process share that state, so with `Reps = 1` the `Noise` column cannot show it. See [Measurement methodology](#measurement-methodology).
  - Developed-flow checkpoints: `--developed(-dev)`. By default the suite times `sim_step!` starting from a *developed* flow loaded from `checkpoints/<case>_<log2p>_<ftype>.jld2` (git-LFS) instead of from the startup transient, so the measurement reflects steady-state cost. Generate the checkpoints with `julia --project=. develop.jl` (which advances each case to its `develop_time` in [util.jl](./util.jl)) and render a vorticity image per case with `julia --project=. visualize.jl`. A requested case/size with no stored checkpoint is a hard error; pass `-dev ""` to time the transient instead, or `-dev <dir>` to read checkpoints from a different directory.
 
 The following command
@@ -61,20 +63,62 @@ julia --project compare.jl $(find data/benchmark -name "tgv*CPU.json" -printf "%
 ```
 by taking the `tgv` JSON files, sort them by creation time, and pass them as arguments to the `compare.jl` program. Multiple ppaterns can also be specified with `--patterns="tgv jelly"` for example.
 
-The `--speedup_base="<backend>,<waterlily hash/ref>,<julia version>"` argument (or a subset of it, ie. `"<backend>,<julia version>"`) can be passed to reference speed-ups: `speedup_x = time(benchmark_<backend>) / time(benchmark_x)`. Tokens are matched case-sensitively against the tags stored in the JSON files, so use `CPUx04` (not `cpux04`); if no match is found the script prints the available `(Backend, WaterLily ref, Julia, FP)` quadruples and the unmatched tokens. The `--sort=<1 to 12>` argument can also be used when running the comparison. It will sort the benchmark table rows by the values corresponding to the column index passed as argument. `--sort=1` corresponds to sorting by backend alphabetically; `--sort=7` sorts by minimum time; `--sort=11` sorts by Δ; `--sort=12` sorts by speedup. The speedup baseline row is highlighted in blue, and the fastest run per backend is highlighted in green. The `--gc` (or `--gc=1`) flag shows the GC fraction column, which is hidden by default. Last, a `--backend_color=<colorscheme>` can be passed to use a certain [color scheme](https://docs.juliaplots.org/dev/generated/colorschemes/) if plotting results (ie. passing the `--plot_dir=<plot_dir>` argument).
+The `--speedup_base="<backend>,<waterlily hash/ref>,<julia version>"` argument (or a subset of it, ie. `"<backend>,<julia version>"`) can be passed to reference speed-ups: `speedup_x = time(benchmark_<backend>) / time(benchmark_x)`. Tokens are matched case-sensitively against the tags stored in the JSON files, so use `CPUx04` (not `cpux04`); if no match is found the script prints the available `(Backend, WaterLily ref, Julia, FP)` quadruples and the unmatched tokens. The `--sort=<1 to 15>` argument can also be used when running the comparison. It will sort the benchmark table rows by the values corresponding to the column index passed as argument. `--sort=1` corresponds to sorting by backend alphabetically; `--sort=7` sorts by minimum time; `--sort=11` sorts by speedup; `--sort=12` sorts by Δ; `--sort=14` sorts by significance. The speedup baseline row is highlighted in blue, and the fastest run per backend is highlighted in green. The `--gc` (or `--gc=1`) flag shows the GC fraction column, which is hidden by default. Last, a `--backend_color=<colorscheme>` can be passed to use a certain [color scheme](https://docs.juliaplots.org/dev/generated/colorschemes/) if plotting results (ie. passing the `--plot_dir=<plot_dir>` argument).
 
 ## Measurement methodology
 
-Each benchmark runs `sim_step!` for `max_steps` iterations (default `25`) as a single `evals=1` unit, then repeats that unit `samples=5` times. The reported table shows:
+**What is timed.** One sample is a single `sim_step!` followed by a backend synchronisation. A *run* is `max_steps` consecutive steps (default `25`), and each benchmark does 5 runs. With developed flows (the default), every run is first reset to the same checkpoint, so all runs time the same steps of the flow; with `-dev ""` the runs march on continuously from the startup transient. Before the runs, the case is warmed up from the same state for at least 50 steps and 2 seconds (JIT, device clocks), and `GC.gc()` is called.
 
-- **Min [s]**: minimum across samples — used as the robust point estimate (insensitive to OS jitter / GC) for speedup and cost-per-DOF.
-- **Med [s]** / **Max [s]**: expose the spread. A large gap between `Min` and `Max` flags a noisy run — rerun or widen the warmup if you see this consistently.
-- **Alloc [k]**: number of allocations in the minimum-time sample, divided by 1000.
-- **Cost [ns/DOF/dt]**: `min_time / DOF / max_steps`, normalized cost per cell per time step.
-- **Δ [%]**: cost delta against the same-backend reference row matching the speedup baseline's `(WaterLily ref, Julia, FP)`. The reference row itself prints `-`. Useful to compare WaterLily versions, Julia versions, or precisions while holding the backend fixed.
-- **Speedup**: `time(speedup_base) / min_time`. The speedup baseline defaults to the first row; set explicitly with `--speedup_base`.
-- **GC [%]** (hidden by default; show with `--gc`): GC fraction of the minimum-time sample.
+**Reference time.** For each run, take the median of its per-step times, which discards occasional slow steps (GC, remeasure spikes). The reference is the **minimum of the run medians**, which discards runs slowed down from outside, as BenchmarkTools' minimum does. Note that the median describes the typical step: a change that only affects a minority of steps (e.g. an occasional expensive V-cycle) does not move it.
 
-Each case is preceded by 50 warmup steps to absorb the JIT tail and let slow transients (e.g. TGV viscous decay) settle into quasi-steady state, and `GC.gc()` is called before the run; `gcsample=true` triggers GC between samples so per-sample GC bias is minimized.
+**Table columns.** An illustrative table (master against a branch, 2 repetitions) with the same code measured in two machine states (CPUx01), the same code on a quiet machine (CPUx04), and a real +10% regression (GPU):
 
-Because samples are invoked on the same `Simulation` object, late samples run from a later physical time than early ones — for transient cases (e.g. sphere wake, jelly gait) this shows up as spread. Treat per-row Δ within ±5% as noise unless the Min/Max spread is tight.
+```
+▶ log2p = 6
+┌────────────┬─────────────────┬────────┬─────────┬───────┬───────┬───────┬───────┬─────────────┬─────────┬──────────────┬───────┬─────────┬──────┐
+│  Backend   │    WaterLily    │ Julia  │   FP    │ Alloc │  Min  │  Med  │  Max  │    Cost     │ Speedup │    Δ ± σ     │ Noise │ Signif  │ Reps │
+│            │                 │        │         │  [k]  │ [ms]  │ [ms]  │ [ms]  │ [ns/DOF/dt] │         │     [%]      │  [%]  │ [|Δ|/σ] │      │
+├────────────┼─────────────────┼────────┼─────────┼───────┼───────┼───────┼───────┼─────────────┼─────────┼──────────────┼───────┼─────────┼──────┤
+│     CPUx01 │          master │ 1.11.5 │ Float32 │   0.1 │ 36.40 │ 38.96 │ 41.55 │      138.85 │    1.00 │            - │   9.5 │       - │    2 │
+│     CPUx01 │ metal-followups │ 1.11.5 │ Float32 │   0.1 │ 36.38 │ 38.90 │ 41.45 │      138.78 │    1.00 │  -0.1 ± 13.4 │   9.4 │    0.0  │    2 │
+│     CPUx04 │          master │ 1.11.5 │ Float32 │  13.7 │ 15.42 │ 15.51 │ 15.59 │       58.82 │    2.36 │            - │   0.4 │       - │    2 │
+│     CPUx04 │ metal-followups │ 1.11.5 │ Float32 │  13.7 │ 15.47 │ 15.55 │ 15.62 │       59.01 │    2.35 │  +0.3 ±  0.5 │   0.3 │    0.7  │    2 │
+│ GPU-NVIDIA │          master │ 1.11.5 │ Float32 │  21.4 │  3.59 │  3.62 │  3.64 │       13.69 │   10.14 │            - │   0.6 │       - │    2 │
+│ GPU-NVIDIA │ metal-followups │ 1.11.5 │ Float32 │  21.4 │  3.95 │  3.98 │  4.01 │       15.07 │    9.22 │ +10.0 ±  0.9 │   0.7 │   10.8  │    2 │
+└────────────┴─────────────────┴────────┴─────────┴───────┴───────┴───────┴───────┴─────────────┴─────────┴──────────────┴───────┴─────────┴──────┘
+```
+
+- **Alloc [k]**: allocations per step, averaged over a block of `max_steps` steps, divided by 1000. Only meaningful on the SIMD backend (CPUx01); the KernelAbstractions backends report kernel-launch bookkeeping.
+- **GC [%]** (hidden by default; show with `--gc`): GC fraction of the fastest step.
+- **Min [ms]**: the reference time per step. It is the point estimate used for cost, speedup and Δ.
+- **Med [ms]** / **Max [ms]**: median and maximum of the run medians, to expose the spread.
+- **Cost [ns/DOF/dt]**: `Min` divided by the number of cells, i.e. the cost per cell and per time step.
+- **Speedup**: `Min(speedup_base) / Min`. The speedup baseline is a single row for the whole table, the first one by default (set it with `--speedup_base`), so it also compares across backends.
+- **Δ ± σ [%]**: cost difference against the *reference row*, which is the row of the same backend matching the speedup baseline's `(WaterLily ref, Julia, FP)`, e.g. the master row of that backend when comparing master against a PR. The reference row itself prints `-`. Positive means slower. σ is the scatter of Δ, `σ = sqrt(Noise_row² + Noise_ref²)`, because Δ is the difference of two noisy rows.
+- **Noise [%]**: scatter of the row's measurement relative to `Min` (one standard deviation), see below.
+- **Signif [|Δ|/σ]**: significance of Δ (it is not Δ divided by the row's own `Noise`). Below about 1 the Δ is indistinguishable from scatter; believe it from about 2 to 3. A `*` marks a value where the row or its reference row has `Reps = 1`: σ then only covers the scatter within a process.
+- **Reps**: number of repetitions (separate processes) merged into the row, see `--repeats`.
+
+**Noise and repetitions.** All the runs of a benchmark happen inside one Julia process, so they share any machine state that outlives the process (CPU frequency, thermal or power state). On a power- or thermal-limited machine such as a laptop, two processes measuring the same code a few minutes apart have been seen to differ by 14% while each reported a noise below 1%, and the fastest step of the slow process never reached the level of the fast one. A single process cannot measure this scatter, so with `Reps = 1` a small `Noise` and a large `Signif` do not make a Δ trustworthy on such machines. With `--repeats N` each benchmark is measured in `N` separate processes, and:
+
+- `Min` is the minimum over the processes of their reference times.
+- `Noise` with `Reps = 1` is the std of the 5 run medians, divided by `Min`.
+- `Noise` with `Reps > 1` is the larger of (a) the std of the per-process reference times and (b) the largest std of the run medians of a process, divided by `Min`. (a) measures how much the reported number changes from one process to the next; (b) is a floor, since (a) is poorly estimated from 2 or 3 processes. Both are standard deviations, so the column means the same with and without repetitions.
+
+Example with 3 repetitions, run medians in ms:
+
+```
+          Process 1   Process 2   Process 3
+  Run 1     36.4        41.3        36.5
+  Run 2     36.5        41.4        36.6
+  Run 3     36.6        41.5        36.7
+  Run 4     36.4        41.3        36.5
+  Run 5     36.5        41.4        36.6
+
+  per-process reference times (min of each column): 36.4, 41.3, 36.5  ->  Min = 36.4
+  (a) between processes: std(36.4, 41.3, 36.5) = 2.80 ms
+  (b) within a process:  largest std of a column = 0.08 ms
+  Noise = max(2.80, 0.08) / 36.4 = 7.7%
+```
+
+Three repetitions are a better default than two on a laptop: with two, (a) rests on a single difference, and both processes can land in the same machine state by chance.
