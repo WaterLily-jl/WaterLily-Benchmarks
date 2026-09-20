@@ -98,7 +98,7 @@ for (i, case) in enumerate(cases)
     header_top    = ["Backend", "WaterLily", "Julia", "FP", "Alloc", "GC",  "Min",  "Med",  "Max",  "Cost",        "Speedup", "Δ ± σ", "Noise", "Signif", "Reps"]
     header_units  = [""       , ""         , ""     , ""  , "[k]"  , "[%]", "[ms]", "[ms]", "[ms]", "[ns/DOF/dt]", ""       , "[%]"  , "[%]"  , "[|Δ|/σ]", ""    ]
     column_labels = [header_top, header_units]
-    data = Matrix{Any}(undef, length(benchmarks), length(header_top) + 1) # last column (not displayed): σ of Δ
+    data = Matrix{Any}(undef, length(benchmarks), length(header_top) + 2) # last two columns (not displayed): σ of Δ, and whether it rests on a single process
     plotting_data = zeros(length(log2p_str), length(unique(backends_str)), 3) # times, cost, speedups
 
     S = benchmarks[1].tags[4]  # steps per run
@@ -126,7 +126,7 @@ for (i, case) in enumerate(cases)
             gc_pct = datap.gctimes[imin] / datap.times[imin] * 100.0
             waterlily_ref = String(find_git_ref(benchmark.tags[end-1]))
             data[i, :] .= [backends_str[i], waterlily_ref, benchmark.tags[end], benchmark.tags[end-3],
-                datap.allocs / 1000, gc_pct, reference / 1e6, median(rmeds) / 1e6, maximum(rmeds) / 1e6, cost, speedup, 0.0, noise_pct, NaN, repetitions[benchmark], NaN]
+                datap.allocs / 1000, gc_pct, reference / 1e6, median(rmeds) / 1e6, maximum(rmeds) / 1e6, cost, speedup, 0.0, noise_pct, NaN, repetitions[benchmark], NaN, false]
             versions_key = (waterlily_ref, benchmark.tags[end], benchmark.tags[end-3])
             backend_idx = findall(x -> x == backends_str[i], unique(backends_str))[1]
             plotting_data[k, backend_idx, :] .= (data[i, 7], data[i, 10], data[i, 11])
@@ -143,8 +143,9 @@ for (i, case) in enumerate(cases)
                 ref_cost = Float64(data[ref_idx, 10])
                 data[i, 12] = (Float64(data[i, 10]) - ref_cost) / ref_cost * 100
                 # σ: scatter of Δ, the noise of this row and of its reference row combined. Signif = |Δ| / σ
-                data[i, end] = hypot(data[i, 13], data[ref_idx, 13])
-                data[i, 14] = abs(data[i, 12]) / data[i, end]
+                data[i, end-1] = hypot(data[i, 13], data[ref_idx, 13])
+                data[i, 14] = abs(data[i, 12]) / data[i, end-1]
+                data[i, end] = data[i, 15] == 1 || data[ref_idx, 15] == 1
             end
         end
         sorted_cond, sorted_idx = 0 < sort_idx <= length(header_top), nothing
@@ -184,11 +185,13 @@ for (i, case) in enumerate(cases)
         noise_col = ocol_to_dcol[13]
         signif_col = ocol_to_dcol[14]
         fmt_delta_dash = (v, i, j) -> (j in (delta_col, signif_col) && v isa Number && isnan(v)) ? "-" : v
-        fmt_delta_sigma = (v, i, j) -> (j == delta_col && v isa Number) ? @sprintf("%+.1f ± %4.1f", v, data[i, end]) : v
+        fmt_delta_sigma = (v, i, j) -> (j == delta_col && v isa Number) ? @sprintf("%+.1f ± %4.1f", v, data[i, end-1]) : v
+        fmt_signif = (v, i, j) -> (j == signif_col && v isa Number) ? @sprintf("%.1f%s", v, data[i, end] ? "*" : " ") : v
         pretty_table(disp_data; backend=:text, column_labels=disp_labels, column_label_alignment=:c,
             highlighters=[hl_base, hl_per_backend...],
-            formatters = [fmt_delta_dash, fmt_delta_sigma, fmt__printf("%.2f", pct2_cols),
-                          fmt__printf("%.1f", [alloc_col]), fmt__printf("%.1f", [noise_col, signif_col])])
+            formatters = [fmt_delta_dash, fmt_delta_sigma, fmt_signif, fmt__printf("%.2f", pct2_cols),
+                          fmt__printf("%.1f", [alloc_col]), fmt__printf("%.1f", [noise_col])])
+        any(data[:, end]) && println("* Reps = 1 in this row or its reference row: σ and Signif only cover the scatter within a process.")
         # `Alloc` is only meaningful on SIMD (CPUx01): KA backends report kernel-launch bookkeeping
     end
 
