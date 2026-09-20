@@ -1,7 +1,7 @@
 # Run with
 # julia --project compare.jl --data_dir="data/benchmark" --plot_dir="plots" --patterns=\["tgv","sphere","cylinder"\] --sort=1
 # julia --project compare.jl --plot_dir="plots" --sort=1 $(find data/ \( -name "tgv*json" -o -name "sphere*json" -o -name "cylinder*json" \) -printf "%T@ %Tc %p\n" | sort -n | awk '{print $7}')
-# julia --project compare.jl --data_dir="data/benchmark" --plot_dir="plots" --patterns=\["tgv","sphere","cylinder"\] --speedup_base="CPUx01" --sort=11
+# julia --project compare.jl --data_dir="data/benchmark" --plot_dir="plots" --patterns=\["tgv","sphere","cylinder"\] --speedup_base="CPUx01" --sort=12
 
 using BenchmarkTools, PrettyTables, Statistics
 include("util.jl")
@@ -33,6 +33,33 @@ for f in benchmarks_list
     println("    ", f)
 end
 benchmarks_all = [BenchmarkTools.load(f)[1] for f in benchmarks_list]
+# Merge repetitions (benchmark.sh -r): files with identical tags are the same benchmark run in separate
+# processes. Their per-step times are appended in order, as collect_runs! does within a process, so the
+# statistics below span the processes (see `scatter` for `Noise`).
+function merge_repetitions(benchmarks)
+    merged, reps = BenchmarkGroup[], IdDict{BenchmarkGroup,Int}()
+    for b in benchmarks
+        k = findfirst(m -> m.tags == b.tags, merged)
+        if isnothing(k)
+            push!(merged, b); reps[b] = 1
+        else
+            base = merged[k]; reps[base] += 1
+            for bstr in keys(base), n in keys(base[bstr]), f in keys(base[bstr][n])
+                append!(base[bstr][n][f].times, b[bstr][n][f].times)
+                append!(base[bstr][n][f].gctimes, b[bstr][n][f].gctimes)
+            end
+        end
+    end
+    return merged, reps
+end
+benchmarks_all, repetitions = merge_repetitions(benchmarks_all)
+# Scatter of the run medians: their std within a process. The runs of a process share its machine state,
+# so with repetitions take the std of the per-process minima, with the within-process std as a floor.
+function scatter(rmeds, reps)
+    (reps == 1 || length(rmeds) % reps != 0 || length(rmeds) == reps) && return std(rmeds)
+    R = reshape(rmeds, :, reps) # column = process
+    return max(maximum(std(R, dims=1)), std(minimum(R, dims=1)))
+end
 cases_str = [b.tags[1] for b in benchmarks_all] |> unique
 benchmarks_all_dict = Dict(Pair{String, Vector{BenchmarkGroup}}(k, []) for k in cases_str)
 for b in benchmarks_all
@@ -68,25 +95,26 @@ for (i, case) in enumerate(cases)
     log2p_str = sort(log2p_str[1])
     f_test = benchmarks[1].tags[2]
     # Table data. Min/Med/Max [ms] are over the run medians; Min is the reference for Cost/Speedup/Δ
-    header_top    = ["Backend", "WaterLily", "Julia", "FP", "Alloc", "GC",  "Min",  "Med",  "Max",  "Cost",        "Δ",   "Speedup", "Noise"]
-    header_units  = [""       , ""         , ""     , ""  , "[k]"  , "[%]", "[ms]", "[ms]", "[ms]", "[ns/DOF/dt]", "[%]", ""       , "[%]"  ]
+    header_top    = ["Backend", "WaterLily", "Julia", "FP", "Alloc", "GC",  "Min",  "Med",  "Max",  "Cost",        "Speedup", "Δ ± σ", "Noise", "Signif", "Reps"]
+    header_units  = [""       , ""         , ""     , ""  , "[k]"  , "[%]", "[ms]", "[ms]", "[ms]", "[ns/DOF/dt]", ""       , "[%]"  , "[%]"  , "[|Δ|/σ]", ""    ]
     column_labels = [header_top, header_units]
-    data = Matrix{Any}(undef, length(benchmarks), length(header_top))
+    data = Matrix{Any}(undef, length(benchmarks), length(header_top) + 2) # last two columns (not displayed): σ of Δ, and whether it rests on a single process
     plotting_data = zeros(length(log2p_str), length(unique(backends_str)), 3) # times, cost, speedups
 
     S = benchmarks[1].tags[4]  # steps per run
-    n_runs = length(benchmarks[1][backends_str[1]][first(log2p_str)][f_test].times) ÷ S
+    n_runs = length(benchmarks[1][backends_str[1]][first(log2p_str)][f_test].times) ÷ S ÷ repetitions[benchmarks[1]]
     printstyled("Benchmark environment: $case $f_test ($(n_runs) runs × $(S) steps)\n", bold=true)
     for (k, n) in enumerate(log2p_str)
         printstyled("▶ log2p = $n\n", bold=true)
         # Per-step times reshaped to (S, runs). Each run's median is robust to step spikes (GC, remeasure),
         # and the min over runs to one-sided contamination. noise = std of the run medians / reference.
+        # noise = scatter / reference, which with `Reps` > 1 includes the std between processes.
         perstep_ref(datap) = minimum(median(reshape(datap.times, S, length(datap.times) ÷ S), dims=1))
         for (i, benchmark) in enumerate(benchmarks)
             datap = benchmark[backends_str[i]][n][f_test]
             rmeds = vec(median(reshape(datap.times, S, length(datap.times) ÷ S), dims=1))
             reference = minimum(rmeds)
-            noise_pct = std(rmeds) / reference * 100 # |Δ| below this is scatter
+            noise_pct = scatter(rmeds, repetitions[benchmark]) / reference * 100 # |Δ| below this is scatter
             if !isnothing(speedup_base)
                 speedup = perstep_ref(benchmarks[speedup_base_idx][speedup_base_backend][n][f_test]) / reference
             else
@@ -98,10 +126,10 @@ for (i, case) in enumerate(cases)
             gc_pct = datap.gctimes[imin] / datap.times[imin] * 100.0
             waterlily_ref = String(find_git_ref(benchmark.tags[end-1]))
             data[i, :] .= [backends_str[i], waterlily_ref, benchmark.tags[end], benchmark.tags[end-3],
-                datap.allocs / 1000, gc_pct, reference / 1e6, median(rmeds) / 1e6, maximum(rmeds) / 1e6, cost, 0.0, speedup, noise_pct]
+                datap.allocs / 1000, gc_pct, reference / 1e6, median(rmeds) / 1e6, maximum(rmeds) / 1e6, cost, speedup, 0.0, noise_pct, NaN, repetitions[benchmark], NaN, false]
             versions_key = (waterlily_ref, benchmark.tags[end], benchmark.tags[end-3])
             backend_idx = findall(x -> x == backends_str[i], unique(backends_str))[1]
-            plotting_data[k, backend_idx, :] .= (data[i, 7], data[i, 10], data[i, 12])
+            plotting_data[k, backend_idx, :] .= (data[i, 7], data[i, 10], data[i, 11])
         end
         ref_wl, ref_julia, ref_prec = data[speedup_base_idx, 2], data[speedup_base_idx, 3], data[speedup_base_idx, 4]
         for i in axes(data, 1)
@@ -110,10 +138,14 @@ for (i, case) in enumerate(cases)
                                      data[j, 3] == ref_julia && data[j, 4] == ref_prec,
                                 axes(data, 1))
             if isnothing(ref_idx) || i == ref_idx
-                data[i, 11] = NaN
+                data[i, 12] = NaN
             else
                 ref_cost = Float64(data[ref_idx, 10])
-                data[i, 11] = (Float64(data[i, 10]) - ref_cost) / ref_cost * 100
+                data[i, 12] = (Float64(data[i, 10]) - ref_cost) / ref_cost * 100
+                # σ: scatter of Δ, the noise of this row and of its reference row combined. Signif = |Δ| / σ
+                data[i, end-1] = hypot(data[i, 13], data[ref_idx, 13])
+                data[i, 14] = abs(data[i, 12]) / data[i, end-1]
+                data[i, end] = data[i, 15] == 1 || data[ref_idx, 15] == 1
             end
         end
         sorted_cond, sorted_idx = 0 < sort_idx <= length(header_top), nothing
@@ -147,15 +179,19 @@ for (i, case) in enumerate(cases)
         disp_data = data[:, keep_cols]
         disp_labels = [header_top[keep_cols], header_units[keep_cols]]
         ocol_to_dcol = Dict(oi => di for (di, oi) in enumerate(keep_cols))
-        pct2_cols = [ocol_to_dcol[c] for c in [6,7,8,9,10,12] if haskey(ocol_to_dcol, c)]
-        delta_col = ocol_to_dcol[11]
+        pct2_cols = [ocol_to_dcol[c] for c in [6,7,8,9,10,11] if haskey(ocol_to_dcol, c)]
+        delta_col = ocol_to_dcol[12]
         alloc_col = ocol_to_dcol[5]
         noise_col = ocol_to_dcol[13]
-        fmt_delta_dash = (v, i, j) -> (j == delta_col && v isa Number && isnan(v)) ? "-" : v
+        signif_col = ocol_to_dcol[14]
+        fmt_delta_dash = (v, i, j) -> (j in (delta_col, signif_col) && v isa Number && isnan(v)) ? "-" : v
+        fmt_delta_sigma = (v, i, j) -> (j == delta_col && v isa Number) ? @sprintf("%+.1f ± %4.1f", v, data[i, end-1]) : v
+        fmt_signif = (v, i, j) -> (j == signif_col && v isa Number) ? @sprintf("%.1f%s", v, data[i, end] ? "*" : " ") : v
         pretty_table(disp_data; backend=:text, column_labels=disp_labels, column_label_alignment=:c,
             highlighters=[hl_base, hl_per_backend...],
-            formatters = [fmt_delta_dash, fmt__printf("%.2f", pct2_cols), fmt__printf("%+.1f", [delta_col]),
+            formatters = [fmt_delta_dash, fmt_delta_sigma, fmt_signif, fmt__printf("%.2f", pct2_cols),
                           fmt__printf("%.1f", [alloc_col]), fmt__printf("%.1f", [noise_col])])
+        any(data[:, end]) && println("* Reps = 1 in this row or its reference row: σ and Signif only cover the scatter within a process.")
         # `Alloc` is only meaningful on SIMD (CPUx01): KA backends report kernel-launch bookkeeping
     end
 

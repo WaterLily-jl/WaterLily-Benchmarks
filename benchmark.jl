@@ -25,7 +25,7 @@ function collect_runs!(group, s, resets, allocs)
 end
 
 # Generate benchmarks
-function run_benchmarks(cases, log2p, max_steps, ftype, backend, bstr; data_dir="./", developed="")
+function run_benchmarks(cases, log2p, max_steps, ftype, backend, bstr; data_dir="./", developed="", rep="")
     for (case, p, s, ft) in zip(cases, log2p, max_steps, ftype)
         println("Benchmarking: $(case)  ($(N_RUNS) runs × $(s) steps)")
         suite = BenchmarkGroup()
@@ -37,7 +37,7 @@ function run_benchmarks(cases, log2p, max_steps, ftype, backend, bstr; data_dir=
         ) # create benchmark
         GC.gc()
         results[bstr] = collect_runs!(suite[bstr], s, resets, allocs) # run!
-        fname = "$(case)_$(p...)_$(s)_$(ft)_$(bstr)_$(git_hash)_$VERSION.json"
+        fname = "$(case)_$(p...)_$(s)_$(ft)_$(bstr)_$(git_hash)_$(VERSION)$(rep).json"
         BenchmarkTools.save(joinpath(data_dir,fname), results)
     end
 end
@@ -49,8 +49,11 @@ cases, log2p, max_steps, ftype, backend, data_dir = parse_cla(ARGS;
 # Exact flag match, since "developed" can also appear inside another value (e.g. a data_dir).
 _devi = findfirst(a -> startswith(a, "--developed="), ARGS)
 developed = isnothing(_devi) ? "checkpoints" : split(ARGS[_devi], "="; limit=2)[2]
+# `--rep=<n>` (benchmark.sh -r): repetition index, appended to the file name
+_repi = findfirst(a -> startswith(a, "--rep="), ARGS)
+rep = isnothing(_repi) ? "" : "_r" * split(ARGS[_repi], "="; limit=2)[2]
 
 # Generate benchmark data
 data_dir = joinpath(data_dir, hostname * "_" * git_hash)
 mkpath(data_dir)
-run_benchmarks(cases, log2p, max_steps, ftype, backend, backend_str[backend]; data_dir, developed)
+run_benchmarks(cases, log2p, max_steps, ftype, backend, backend_str[backend]; data_dir, developed, rep)

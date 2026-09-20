@@ -29,6 +29,9 @@ expand () { # $1=arg name (for errors), $2=per-case defaults, $3..=provided valu
     else echo "ERROR: '$name' has $# value(s) but expected 1 or $NCASES (cases)" >&2; exit 1; fi
 }
 
+# Reverse the given values into R (used to flip the version order on even repetitions)
+reverse () { local i; R=(); for ((i=$#; i>=1; i--)); do R+=("${!i}"); done; }
+
 # Normalise a boolean-ish string into "true"/"false" (sets the global UPDATE)
 set_update () {
     case "$(echo "$1" | tr '[:upper:]' '[:lower:]')" in
@@ -126,7 +129,8 @@ display_info () {
  - Sim. steps:    ${MAXSTEPS[@]:0:$NCASES}
  - Data type:     ${FTYPE[@]:0:$NCASES}
  - Developed:     ${DEVELOPED:-(transient)}
- - Update env:    $UPDATE"
+ - Update env:    $UPDATE
+ - Repeats:       $REPEATS"
     echo "--------------------------------------"; echo
 }
 
@@ -142,6 +146,7 @@ BS_VERSIONS=()                                            # -bs: BiotSavartBCs v
 BACKENDS=('Array' 'CuArray')
 THREADS=('4')
 UPDATE=false
+REPEATS=1                                                 # -r: repeat the whole sweep in new processes
 DEVELOPED="checkpoints"                                   # -dev <dir>: developed-flow checkpoints; "" times the transient
 # Default sweep (run when -c is omitted) and per-case defaults for omitted -p/-s/-ft.
 CASES=('tgv' 'jelly')
@@ -208,6 +213,10 @@ case "$1" in
     set_update "$2"
     shift
     ;;
+    --repeats|-r)
+    REPEATS=$2
+    shift
+    ;;
     *)
     printf "ERROR: Invalid argument %s\n" "${1}" 1>&2
     exit 1
@@ -221,6 +230,11 @@ if [[ " ${BACKENDS[*]} " =~ [[:space:]]'Array'[[:space:]] ]]; then
         echo "ERROR: Backend 'Array' is present, but '--threads' argument is empty."
         exit 1
     fi
+fi
+
+# Assert "--repeats" is a positive integer
+if ! [[ "$REPEATS" =~ ^[1-9][0-9]*$ ]]; then
+    echo "ERROR: Invalid value '$REPEATS' for --repeats/-r (expected a positive integer)" >&2; exit 1
 fi
 
 # Expand case args: single value broadcasts, N kept, omitted uses per-case defaults.
@@ -297,25 +311,39 @@ FTYPE=$(join_array_comma "${FTYPE[*]}")
 args_cases="--cases=$CASES --log2p=$LOG2P --max_steps=$MAXSTEPS --ftype=$FTYPE --data_dir=$DATA_DIR"
 args_cases="$args_cases --developed=$DEVELOPED"  # always forwarded, so -dev "" reaches benchmark.jl
 
-# Benchmarks
-for version in "${VERSIONS[@]}" ; do
-    echo "Running with Julia version $version from $( which julia )"
-    for i in "${!WL_VERSIONS[@]}" ; do
-        wl_version="${WL_VERSIONS[$i]}"
-        bs_version="${BS_VERSIONS[$i]:-}"
-        git_checkout
-        for backend in "${BACKENDS[@]}" ; do
-            if [ "${backend}" == "Array" ]; then
-                for thread in "${THREADS[@]}" ; do
-                    args="-t $thread ${THIS_DIR}/benchmark.jl --backend=$backend $args_cases"
+# Benchmarks. With -r N the sweep runs N times in new processes, reversing the version order on even
+# repetitions, to sample a machine state that outlives a process. compare.jl merges the repetitions.
+for rep in $(seq 1 $REPEATS) ; do
+    args_rep=""
+    V_IDX=("${!VERSIONS[@]}"); W_IDX=("${!WL_VERSIONS[@]}")
+    if (( REPEATS > 1 )); then
+        echo "Repetition $rep of $REPEATS"
+        args_rep="--rep=$rep"
+        if (( rep % 2 == 0 )); then
+            reverse "${V_IDX[@]}"; V_IDX=("${R[@]}")
+            reverse "${W_IDX[@]}"; W_IDX=("${R[@]}")
+        fi
+    fi
+    for vi in "${V_IDX[@]}" ; do
+        version="${VERSIONS[$vi]}"
+        echo "Running with Julia version $version from $( which julia )"
+        for i in "${W_IDX[@]}" ; do
+            wl_version="${WL_VERSIONS[$i]}"
+            bs_version="${BS_VERSIONS[$i]:-}"
+            git_checkout
+            for backend in "${BACKENDS[@]}" ; do
+                if [ "${backend}" == "Array" ]; then
+                    for thread in "${THREADS[@]}" ; do
+                        args="-t $thread ${THIS_DIR}/benchmark.jl --backend=$backend $args_cases $args_rep"
+                        update_environment
+                        run_benchmark
+                    done
+                else
+                    args="${THIS_DIR}/benchmark.jl --backend=$backend $args_cases $args_rep"
                     update_environment
                     run_benchmark
-                done
-            else
-                args="${THIS_DIR}/benchmark.jl --backend=$backend $args_cases"
-                update_environment
-                run_benchmark
-            fi
+                fi
+            done
         done
     done
 done
