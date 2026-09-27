@@ -63,7 +63,7 @@ julia --project compare.jl $(find data/benchmark -name "tgv*CPU.json" -printf "%
 ```
 by taking the `tgv` JSON files, sort them by creation time, and pass them as arguments to the `compare.jl` program. Multiple ppaterns can also be specified with `--patterns="tgv jelly"` for example.
 
-The `--speedup_base="<backend>,<waterlily hash/ref>,<julia version>"` argument (or a subset of it, ie. `"<backend>,<julia version>"`) can be passed to reference speed-ups: `speedup_x = time(benchmark_<backend>) / time(benchmark_x)`. Tokens are matched case-sensitively against the tags stored in the JSON files, so use `CPUx04` (not `cpux04`); if no match is found the script prints the available `(Backend, WaterLily ref, Julia, FP)` quadruples and the unmatched tokens. The `--sort=<1 to 15>` argument can also be used when running the comparison. It will sort the benchmark table rows by the values corresponding to the column index passed as argument. `--sort=1` corresponds to sorting by backend alphabetically; `--sort=7` sorts by minimum time; `--sort=11` sorts by speedup; `--sort=12` sorts by Δ; `--sort=14` sorts by significance. The speedup baseline row is highlighted in blue, and the fastest run per backend is highlighted in green. The `--gc` (or `--gc=1`) flag shows the GC fraction column, which is hidden by default. Last, a `--backend_color=<colorscheme>` can be passed to use a certain [color scheme](https://docs.juliaplots.org/dev/generated/colorschemes/) if plotting results (ie. passing the `--plot_dir=<plot_dir>` argument).
+The `--speedup_base="<backend>,<waterlily hash/ref>,<julia version>"` argument (or a subset of it, ie. `"<backend>,<julia version>"`) can be passed to reference speed-ups: `speedup_x = time(benchmark_<backend>) / time(benchmark_x)`. Tokens are matched case-sensitively against the tags stored in the JSON files, so use `CPUx04` (not `cpux04`); if no match is found the script prints the available `(Backend, WaterLily ref, Julia, FP)` quadruples and the unmatched tokens. The `--sort=<column>` argument can also be used when running the comparison. It will sort the benchmark table rows by the values of that column, given by (the start of) its name, case-insensitive: `--sort=Backend` sorts by backend alphabetically; `--sort=Min` sorts by minimum time; `--sort=Speedup` sorts by speedup; `--sort=Δ` sorts by Δ; `--sort=Signif` sorts by significance. A column index (`--sort=<1 to 15>`, counting the hidden `GC` column) also works, but it changes whenever the columns do. The speedup baseline row is highlighted in blue, and the fastest run per backend is highlighted in green. The `--gc` (or `--gc=1`) flag shows the GC fraction column, which is hidden by default. Last, a `--backend_color=<colorscheme>` can be passed to use a certain [color scheme](https://docs.juliaplots.org/dev/generated/colorschemes/) if plotting results (ie. passing the `--plot_dir=<plot_dir>` argument).
 
 ## Measurement methodology
 
@@ -75,17 +75,17 @@ The `--speedup_base="<backend>,<waterlily hash/ref>,<julia version>"` argument (
 
 ```
 ▶ log2p = 6
-┌────────────┬─────────────────┬────────┬─────────┬───────┬───────┬───────┬───────┬─────────────┬─────────┬──────────────┬───────┬─────────┬──────┐
-│  Backend   │    WaterLily    │ Julia  │   FP    │ Alloc │  Min  │  Med  │  Max  │    Cost     │ Speedup │    Δ ± σ     │ Noise │ Signif  │ Reps │
-│            │                 │        │         │  [k]  │ [ms]  │ [ms]  │ [ms]  │ [ns/DOF/dt] │         │     [%]      │  [%]  │ [|Δ|/σ] │      │
-├────────────┼─────────────────┼────────┼─────────┼───────┼───────┼───────┼───────┼─────────────┼─────────┼──────────────┼───────┼─────────┼──────┤
-│     CPUx01 │          master │ 1.11.5 │ Float32 │   0.1 │ 36.40 │ 38.96 │ 41.55 │      138.85 │    1.00 │            - │   9.5 │       - │    2 │
-│     CPUx01 │ metal-followups │ 1.11.5 │ Float32 │   0.1 │ 36.38 │ 38.90 │ 41.45 │      138.78 │    1.00 │  -0.1 ± 13.4 │   9.4 │    0.0  │    2 │
-│     CPUx04 │          master │ 1.11.5 │ Float32 │  13.7 │ 15.42 │ 15.51 │ 15.59 │       58.82 │    2.36 │            - │   0.4 │       - │    2 │
-│     CPUx04 │ metal-followups │ 1.11.5 │ Float32 │  13.7 │ 15.47 │ 15.55 │ 15.62 │       59.01 │    2.35 │  +0.3 ±  0.5 │   0.3 │    0.7  │    2 │
-│ GPU-NVIDIA │          master │ 1.11.5 │ Float32 │  21.4 │  3.59 │  3.62 │  3.64 │       13.69 │   10.14 │            - │   0.6 │       - │    2 │
-│ GPU-NVIDIA │ metal-followups │ 1.11.5 │ Float32 │  21.4 │  3.95 │  3.98 │  4.01 │       15.07 │    9.22 │ +10.0 ±  0.9 │   0.7 │   10.8  │    2 │
-└────────────┴─────────────────┴────────┴─────────┴───────┴───────┴───────┴───────┴─────────────┴─────────┴──────────────┴───────┴─────────┴──────┘
+┌────────────┬─────────────────┬────────┬─────────┬───────┬───────┬───────┬───────┬─────────────┬─────────┬───────┬──────────────┬─────────┬──────┐
+│  Backend   │    WaterLily    │ Julia  │   FP    │ Alloc │  Min  │  Med  │  Max  │    Cost     │ Speedup │ Noise │    Δ ± σ     │ Signif  │ Reps │
+│            │                 │        │         │  [k]  │ [ms]  │ [ms]  │ [ms]  │ [ns/DOF/dt] │         │  [%]  │     [%]      │ [|Δ|/σ] │      │
+├────────────┼─────────────────┼────────┼─────────┼───────┼───────┼───────┼───────┼─────────────┼─────────┼───────┼──────────────┼─────────┼──────┤
+│     CPUx01 │          master │ 1.11.5 │ Float32 │   0.1 │ 36.40 │ 38.96 │ 41.55 │      138.85 │    1.00 │   9.5 │            - │       - │    2 │
+│     CPUx01 │ metal-followups │ 1.11.5 │ Float32 │   0.1 │ 36.38 │ 38.90 │ 41.45 │      138.78 │    1.00 │   9.4 │  -0.1 ± 13.4 │    0.0  │    2 │
+│     CPUx04 │          master │ 1.11.5 │ Float32 │  13.7 │ 15.42 │ 15.51 │ 15.59 │       58.82 │    2.36 │   0.4 │            - │       - │    2 │
+│     CPUx04 │ metal-followups │ 1.11.5 │ Float32 │  13.7 │ 15.47 │ 15.55 │ 15.62 │       59.01 │    2.35 │   0.3 │  +0.3 ±  0.5 │    0.7  │    2 │
+│ GPU-NVIDIA │          master │ 1.11.5 │ Float32 │  21.4 │  3.59 │  3.62 │  3.64 │       13.69 │   10.14 │   0.6 │            - │       - │    2 │
+│ GPU-NVIDIA │ metal-followups │ 1.11.5 │ Float32 │  21.4 │  3.95 │  3.98 │  4.01 │       15.07 │    9.22 │   0.7 │ +10.0 ±  0.9 │   10.8  │    2 │
+└────────────┴─────────────────┴────────┴─────────┴───────┴───────┴───────┴───────┴─────────────┴─────────┴───────┴──────────────┴─────────┴──────┘
 ```
 
 - **Alloc [k]**: allocations per step, averaged over a block of `max_steps` steps, divided by 1000. Only meaningful on the SIMD backend (CPUx01); the KernelAbstractions backends report kernel-launch bookkeeping.
@@ -94,8 +94,8 @@ The `--speedup_base="<backend>,<waterlily hash/ref>,<julia version>"` argument (
 - **Med [ms]** / **Max [ms]**: median and maximum of the run medians, to expose the spread.
 - **Cost [ns/DOF/dt]**: `Min` divided by the number of cells, i.e. the cost per cell and per time step.
 - **Speedup**: `Min(speedup_base) / Min`. The speedup baseline is a single row for the whole table, the first one by default (set it with `--speedup_base`), so it also compares across backends.
-- **Δ ± σ [%]**: cost difference against the *reference row*, which is the row of the same backend matching the speedup baseline's `(WaterLily ref, Julia, FP)`, e.g. the master row of that backend when comparing master against a PR. The reference row itself prints `-`. Positive means slower. σ is the scatter of Δ, `σ = sqrt(Noise_row² + Noise_ref²)`, because Δ is the difference of two noisy rows.
 - **Noise [%]**: scatter of the row's measurement relative to `Min` (one standard deviation), see below.
+- **Δ ± σ [%]**: cost difference against the *reference row*, which is the row of the same backend matching the speedup baseline's `(WaterLily ref, Julia, FP)`, e.g. the master row of that backend when comparing master against a PR. The reference row itself prints `-`. Positive means slower. σ is the scatter of Δ, `σ = sqrt(Noise_row² + Noise_ref²)`, because Δ is the difference of two noisy rows.
 - **Signif [|Δ|/σ]**: significance of Δ (it is not Δ divided by the row's own `Noise`). Below about 1 the Δ is indistinguishable from scatter; believe it from about 2 to 3. A `*` marks a value where the row or its reference row has `Reps = 1`: σ then only covers the scatter within a process.
 - **Reps**: number of repetitions (separate processes) merged into the row, see `--repeats`.
 

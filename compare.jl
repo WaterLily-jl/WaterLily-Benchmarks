@@ -1,7 +1,7 @@
 # Run with
 # julia --project compare.jl --data_dir="data/benchmark" --plot_dir="plots" --patterns=\["tgv","sphere","cylinder"\] --sort=1
 # julia --project compare.jl --plot_dir="plots" --sort=1 $(find data/ \( -name "tgv*json" -o -name "sphere*json" -o -name "cylinder*json" \) -printf "%T@ %Tc %p\n" | sort -n | awk '{print $7}')
-# julia --project compare.jl --data_dir="data/benchmark" --plot_dir="plots" --patterns=\["tgv","sphere","cylinder"\] --speedup_base="CPUx01" --sort=12
+# julia --project compare.jl --data_dir="data/benchmark" --plot_dir="plots" --patterns=\["tgv","sphere","cylinder"\] --speedup_base="CPUx01" --sort=Speedup
 
 using BenchmarkTools, PrettyTables, Statistics
 include("util.jl")
@@ -9,7 +9,7 @@ include("util.jl")
 # Parse CLA and load benchmarks
 speedup_base = !isnothing(iarg("speedup_base", ARGS)) ? arg_value("speedup_base", ARGS) |> parsestringlist : nothing
 backend_color = !isnothing(iarg("backend_color", ARGS)) ? arg_value("backend_color", ARGS) |> Symbol : :lightrainbow
-sort_idx = !isnothing(iarg("sort", ARGS)) ? arg_value("sort", ARGS) |> metaparse : 0
+sort_by = !isnothing(iarg("sort", ARGS)) ? arg_value("sort", ARGS) : nothing # column name or index
 plot_dir = !isnothing(iarg("plot_dir", ARGS)) ? arg_value("plot_dir", ARGS) : nothing
 data_dir = !isnothing(iarg("data_dir", ARGS)) ? arg_value("data_dir", ARGS) : "data/benchmark"
 patterns = !isnothing(iarg("patterns", ARGS)) ? arg_value("patterns", ARGS) |> parsestringlist : all_cases
@@ -18,7 +18,7 @@ show_gc = !isnothing(iarg("--gc", ARGS)) && !(arg_value("--gc", ARGS) in ("0", "
 benchmarks_list = nothing
 !isnothing(plot_dir) &&  mkpath(plot_dir)
 if isnothing(iarg("data_dir", ARGS)) && any(split(x, '.')[end] == "json" for x in ARGS)  # passed json files directly
-    benchmarks_list = [f for f in ARGS if !any(occursin.(["--sort","--data_dir","--plot_dir"], f))]
+    benchmarks_list = [f for f in ARGS if endswith(f, ".json")]
 elseif !any(split(x, '.')[end] == "json" for x in ARGS) # no json files passed, we rely on --data_dir
     if ispath(data_dir)
         benchmarks_list = rdir(data_dir, patterns)
@@ -67,6 +67,21 @@ for b in benchmarks_all
 end
 cases = [x for x in all_cases if any(occursin.(Ref(x), benchmarks_list))]
 
+# Table columns. They are always looked up by name (`col`), so changing their order only needs changing these lists.
+header_top    = ["Backend", "WaterLily", "Julia", "FP", "Alloc", "GC",  "Min",  "Med",  "Max",  "Cost",        "Speedup", "Noise", "Δ ± σ", "Signif",  "Reps"]
+header_units  = [""       , ""         , ""     , ""  , "[k]"  , "[%]", "[ms]", "[ms]", "[ms]", "[ns/DOF/dt]", ""       , "[%]"  , "[%]"  , "[|Δ|/σ]", ""    ]
+hidden_cols   = ["σ", "Single"] # not displayed: σ of Δ, and whether it rests on a single process
+col(name) = findfirst(==(name), [header_top; hidden_cols])
+version_cols  = col.(["WaterLily", "Julia", "FP"])
+# --sort takes a column index, or the start of a column name (e.g. --sort=Signif, --sort=Δ)
+function sort_column(s)
+    isnothing(s) && return 0
+    idx = something(tryparse(Int, s), findfirst(h -> startswith(lowercase(h), lowercase(s)), header_top), Some(nothing))
+    isnothing(idx) && error("--sort=$s does not match any column of $(header_top).")
+    return idx
+end
+sort_idx = sort_column(sort_by)
+
 # Table and plots
 for (i, case) in enumerate(cases)
     benchmarks = benchmarks_all_dict[case]
@@ -95,10 +110,7 @@ for (i, case) in enumerate(cases)
     log2p_str = sort(log2p_str[1])
     f_test = benchmarks[1].tags[2]
     # Table data. Min/Med/Max [ms] are over the run medians; Min is the reference for Cost/Speedup/Δ
-    header_top    = ["Backend", "WaterLily", "Julia", "FP", "Alloc", "GC",  "Min",  "Med",  "Max",  "Cost",        "Speedup", "Δ ± σ", "Noise", "Signif", "Reps"]
-    header_units  = [""       , ""         , ""     , ""  , "[k]"  , "[%]", "[ms]", "[ms]", "[ms]", "[ns/DOF/dt]", ""       , "[%]"  , "[%]"  , "[|Δ|/σ]", ""    ]
-    column_labels = [header_top, header_units]
-    data = Matrix{Any}(undef, length(benchmarks), length(header_top) + 2) # last two columns (not displayed): σ of Δ, and whether it rests on a single process
+    data = Matrix{Any}(undef, length(benchmarks), length(header_top) + length(hidden_cols))
     plotting_data = zeros(length(log2p_str), length(unique(backends_str)), 3) # times, cost, speedups
 
     S = benchmarks[1].tags[4]  # steps per run
@@ -125,27 +137,24 @@ for (i, case) in enumerate(cases)
             imin = argmin(datap.times)
             gc_pct = datap.gctimes[imin] / datap.times[imin] * 100.0
             waterlily_ref = String(find_git_ref(benchmark.tags[end-1]))
-            data[i, :] .= [backends_str[i], waterlily_ref, benchmark.tags[end], benchmark.tags[end-3],
-                datap.allocs / 1000, gc_pct, reference / 1e6, median(rmeds) / 1e6, maximum(rmeds) / 1e6, cost, speedup, 0.0, noise_pct, NaN, repetitions[benchmark], NaN, false]
+            row = ("Backend"=>backends_str[i], "WaterLily"=>waterlily_ref, "Julia"=>benchmark.tags[end], "FP"=>benchmark.tags[end-3],
+                "Alloc"=>datap.allocs / 1000, "GC"=>gc_pct, "Min"=>reference / 1e6, "Med"=>median(rmeds) / 1e6, "Max"=>maximum(rmeds) / 1e6,
+                "Cost"=>cost, "Speedup"=>speedup, "Noise"=>noise_pct, "Δ ± σ"=>NaN, "Signif"=>NaN, "Reps"=>repetitions[benchmark], "σ"=>NaN, "Single"=>false)
+            for (name, v) in row; data[i, col(name)] = v; end
             versions_key = (waterlily_ref, benchmark.tags[end], benchmark.tags[end-3])
             backend_idx = findall(x -> x == backends_str[i], unique(backends_str))[1]
-            plotting_data[k, backend_idx, :] .= (data[i, 7], data[i, 10], data[i, 11])
+            plotting_data[k, backend_idx, :] .= (data[i, col("Min")], data[i, col("Cost")], data[i, col("Speedup")])
         end
-        ref_wl, ref_julia, ref_prec = data[speedup_base_idx, 2], data[speedup_base_idx, 3], data[speedup_base_idx, 4]
         for i in axes(data, 1)
-            bkend = data[i, 1]
-            ref_idx = findfirst(j -> data[j, 1] == bkend && data[j, 2] == ref_wl &&
-                                     data[j, 3] == ref_julia && data[j, 4] == ref_prec,
-                                axes(data, 1))
-            if isnothing(ref_idx) || i == ref_idx
-                data[i, 12] = NaN
-            else
-                ref_cost = Float64(data[ref_idx, 10])
-                data[i, 12] = (Float64(data[i, 10]) - ref_cost) / ref_cost * 100
+            ref_idx = findfirst(j -> data[j, col("Backend")] == data[i, col("Backend")] &&
+                                     data[j, version_cols] == data[speedup_base_idx, version_cols], axes(data, 1))
+            if !isnothing(ref_idx) && i != ref_idx
+                ref_cost = Float64(data[ref_idx, col("Cost")])
+                data[i, col("Δ ± σ")] = (Float64(data[i, col("Cost")]) - ref_cost) / ref_cost * 100
                 # σ: scatter of Δ, the noise of this row and of its reference row combined. Signif = |Δ| / σ
-                data[i, end-1] = hypot(data[i, 13], data[ref_idx, 13])
-                data[i, 14] = abs(data[i, 12]) / data[i, end-1]
-                data[i, end] = data[i, 15] == 1 || data[ref_idx, 15] == 1
+                data[i, col("σ")] = hypot(data[i, col("Noise")], data[ref_idx, col("Noise")])
+                data[i, col("Signif")] = abs(data[i, col("Δ ± σ")]) / data[i, col("σ")]
+                data[i, col("Single")] = data[i, col("Reps")] == 1 || data[ref_idx, col("Reps")] == 1
             end
         end
         sorted_cond, sorted_idx = 0 < sort_idx <= length(header_top), nothing
@@ -153,10 +162,10 @@ for (i, case) in enumerate(cases)
             sorted_idx = sortperm(data[:, sort_idx])
             data .= data[sorted_idx, :]
         else
-            data = sortslices(data,dims=1,by=x->(x[1],x[2]))
+            data = sortslices(data,dims=1,by=x->(x[col("Backend")],x[col("WaterLily")]))
             if !isnothing(speedup_base)
                 speedup_base_idx2 = findfirst(
-                    x->length(intersect([x[1],x[2],x[3],find_git_hash(x[2])],speedup_base)) == length(speedup_base), eachrow(data)
+                    x->length(intersect([x[col("Backend")],x[col("WaterLily")],x[col("Julia")],find_git_hash(x[col("WaterLily")])],speedup_base)) == length(speedup_base), eachrow(data)
                 )
                 isnothing(speedup_base_idx2) && throw(error("Cannot find base speedup for $case."))
             else
@@ -169,29 +178,25 @@ for (i, case) in enumerate(cases)
         )
         hl_per_backend = []
         for bkend in unique(backends_str)
-            idxs = findall(x->x[1]==bkend,eachrow(data))
-            min_indx = idxs[argmin(data[idxs,7])]
+            idxs = findall(x->x[col("Backend")]==bkend,eachrow(data))
+            min_indx = idxs[argmin(data[idxs,col("Min")])]
             push!(hl_per_backend, TextHighlighter((data, i, j) -> i == min_indx, Crayon(foreground=(32,125,56))))
         end
 
         # hl_fast = TextHighlighter(f=(data, i, j) -> i == argmin(data[:, end-1]), crayon=Crayon(foreground=(32,125,56)))
-        keep_cols = show_gc ? collect(1:length(header_top)) : [collect(1:5); collect(7:length(header_top))]
+        keep_cols = findall(h -> show_gc || h != "GC", header_top)
         disp_data = data[:, keep_cols]
         disp_labels = [header_top[keep_cols], header_units[keep_cols]]
-        ocol_to_dcol = Dict(oi => di for (di, oi) in enumerate(keep_cols))
-        pct2_cols = [ocol_to_dcol[c] for c in [6,7,8,9,10,11] if haskey(ocol_to_dcol, c)]
-        delta_col = ocol_to_dcol[12]
-        alloc_col = ocol_to_dcol[5]
-        noise_col = ocol_to_dcol[13]
-        signif_col = ocol_to_dcol[14]
+        dcols(names...) = findall(in(names), header_top[keep_cols]) # indices in the displayed table
+        delta_col, signif_col = only(dcols("Δ ± σ")), only(dcols("Signif"))
         fmt_delta_dash = (v, i, j) -> (j in (delta_col, signif_col) && v isa Number && isnan(v)) ? "-" : v
-        fmt_delta_sigma = (v, i, j) -> (j == delta_col && v isa Number) ? @sprintf("%+.1f ± %4.1f", v, data[i, end-1]) : v
-        fmt_signif = (v, i, j) -> (j == signif_col && v isa Number) ? @sprintf("%.1f%s", v, data[i, end] ? "*" : " ") : v
+        fmt_delta_sigma = (v, i, j) -> (j == delta_col && v isa Number) ? @sprintf("%+.1f ± %4.1f", v, data[i, col("σ")]) : v
+        fmt_signif = (v, i, j) -> (j == signif_col && v isa Number) ? @sprintf("%.1f%s", v, data[i, col("Single")] ? "*" : " ") : v
         pretty_table(disp_data; backend=:text, column_labels=disp_labels, column_label_alignment=:c,
             highlighters=[hl_base, hl_per_backend...],
-            formatters = [fmt_delta_dash, fmt_delta_sigma, fmt_signif, fmt__printf("%.2f", pct2_cols),
-                          fmt__printf("%.1f", [alloc_col]), fmt__printf("%.1f", [noise_col])])
-        any(data[:, end]) && println("* Reps = 1 in this row or its reference row: σ and Signif only cover the scatter within a process.")
+            formatters = [fmt_delta_dash, fmt_delta_sigma, fmt_signif, fmt__printf("%.2f", dcols("GC", "Min", "Med", "Max", "Cost", "Speedup")),
+                          fmt__printf("%.1f", dcols("Alloc", "Noise"))])
+        any(data[:, col("Single")]) && println("* Reps = 1 in this row or its reference row: σ and Signif only cover the scatter within a process.")
         # `Alloc` is only meaningful on SIMD (CPUx01): KA backends report kernel-launch bookkeeping
     end
 
@@ -205,7 +210,7 @@ for (i, case) in enumerate(cases)
         backends_sort_idxs = sortperm(unique_backends_str, by=length)
         sort!(unique_backends_str, by=length)
 
-        plotting_keys = Dict{Int, NTuple}(k => Tuple(data[k, 2:4]) for k in axes(data, 1))
+        plotting_keys = Dict{Int, NTuple}(k => Tuple(data[k, version_cols]) for k in axes(data, 1))
         versions_key = unique.(collect(zip(values(plotting_keys)...))) |> x->reduce(vcat, x) |> x->join(x, '_')
         data_plot = plotting_data[:, backends_sort_idxs, :]
 
