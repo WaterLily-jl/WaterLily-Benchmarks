@@ -53,11 +53,11 @@ function merge_repetitions(benchmarks)
     return merged, reps
 end
 benchmarks_all, repetitions = merge_repetitions(benchmarks_all)
-# Scatter of the run medians: their std within a process. The runs of a process share its machine state,
+# Scatter of the run means: their std within a process. The runs of a process share its machine state,
 # so with repetitions take the std of the per-process minima, with the within-process std as a floor.
-function scatter(rmeds, reps)
-    (reps == 1 || length(rmeds) % reps != 0 || length(rmeds) == reps) && return std(rmeds)
-    R = reshape(rmeds, :, reps) # column = process
+function scatter(rmeans, reps)
+    (reps == 1 || length(rmeans) % reps != 0 || length(rmeans) == reps) && return std(rmeans)
+    R = reshape(rmeans, :, reps) # column = process
     return max(maximum(std(R, dims=1)), std(minimum(R, dims=1)))
 end
 cases_str = [b.tags[1] for b in benchmarks_all] |> unique
@@ -68,8 +68,8 @@ end
 cases = [x for x in all_cases if any(occursin.(Ref(x), benchmarks_list))]
 
 # Table columns. They are always looked up by name (`col`), so changing their order only needs changing these lists.
-header_top    = ["Backend", "WaterLily", "Julia", "FP", "Alloc", "GC",  "Min",  "Med",  "Max",  "Cost",        "Speedup", "Noise", "Δ ± σ", "Signif",  "Reps"]
-header_units  = [""       , ""         , ""     , ""  , "[k]"  , "[%]", "[ms]", "[ms]", "[ms]", "[ns/DOF/dt]", ""       , "[%]"  , "[%]"  , "[|Δ|/σ]", ""    ]
+header_top    = ["Backend", "WaterLily", "Julia", "FP", "Alloc", "GC",  "Mean", "Median", "Cost",        "Speedup", "Noise", "Δ ± σ", "Signif",  "Reps"]
+header_units  = [""       , ""         , ""     , ""  , "[k]"  , "[%]", "[ms]", "[ms]"  , "[ns/DOF/dt]", ""       , "[%]"  , "[%]"  , "[|Δ|/σ]", ""    ]
 hidden_cols   = ["σ", "Single"] # not displayed: σ of Δ, and whether it rests on a single process
 col(name) = findfirst(==(name), [header_top; hidden_cols])
 version_cols  = col.(["WaterLily", "Julia", "FP"])
@@ -109,7 +109,8 @@ for (i, case) in enumerate(cases)
     length(unique(log2p_str)) != 1 && @error "Case sizes mismatch."
     log2p_str = sort(log2p_str[1])
     f_test = benchmarks[1].tags[2]
-    # Table data. Min/Med/Max [ms] are over the run medians; Min is the reference for Cost/Speedup/Δ
+    # Table data. Mean [ms] is the min over runs of the mean step, the reference for Cost/Speedup/Δ.
+    # Median [ms] is the min over runs of the median step, i.e. the typical step.
     data = Matrix{Any}(undef, length(benchmarks), length(header_top) + length(hidden_cols))
     plotting_data = zeros(length(log2p_str), length(unique(backends_str)), 3) # times, cost, speedups
 
@@ -118,15 +119,18 @@ for (i, case) in enumerate(cases)
     printstyled("Benchmark environment: $case $f_test ($(n_runs) runs × $(S) steps)\n", bold=true)
     for (k, n) in enumerate(log2p_str)
         printstyled("▶ log2p = $n\n", bold=true)
-        # Per-step times reshaped to (S, runs). Each run's median is robust to step spikes (GC, remeasure),
-        # and the min over runs to one-sided contamination. noise = std of the run medians / reference.
-        # noise = scatter / reference, which with `Reps` > 1 includes the std between processes.
-        perstep_ref(datap) = minimum(median(reshape(datap.times, S, length(datap.times) ÷ S), dims=1))
+        # Per-step times reshaped to (S, runs); every run times the same steps. The reference is the min over
+        # runs of the run means: the mean counts all the work of the steps, also when steps do different
+        # amounts of work (e.g. jelly), and the min drops runs slowed down from outside.
+        # noise = scatter of the run means / reference, which with `Reps` > 1 includes the std between processes.
+        per_run(datap, stat) = vec(stat(reshape(datap.times, S, length(datap.times) ÷ S), dims=1))
+        perstep_ref(datap) = minimum(per_run(datap, mean))
         for (i, benchmark) in enumerate(benchmarks)
             datap = benchmark[backends_str[i]][n][f_test]
-            rmeds = vec(median(reshape(datap.times, S, length(datap.times) ÷ S), dims=1))
-            reference = minimum(rmeds)
-            noise_pct = scatter(rmeds, repetitions[benchmark]) / reference * 100 # |Δ| below this is scatter
+            rmeans = per_run(datap, mean)
+            reference = minimum(rmeans)
+            median_step = minimum(per_run(datap, median)) # the typical step, robust to step spikes
+            noise_pct = scatter(rmeans, repetitions[benchmark]) / reference * 100 # |Δ| below this is scatter
             if !isnothing(speedup_base)
                 speedup = perstep_ref(benchmarks[speedup_base_idx][speedup_base_backend][n][f_test]) / reference
             else
@@ -138,12 +142,12 @@ for (i, case) in enumerate(cases)
             gc_pct = datap.gctimes[imin] / datap.times[imin] * 100.0
             waterlily_ref = String(find_git_ref(benchmark.tags[end-1]))
             row = ("Backend"=>backends_str[i], "WaterLily"=>waterlily_ref, "Julia"=>benchmark.tags[end], "FP"=>benchmark.tags[end-3],
-                "Alloc"=>datap.allocs / 1000, "GC"=>gc_pct, "Min"=>reference / 1e6, "Med"=>median(rmeds) / 1e6, "Max"=>maximum(rmeds) / 1e6,
+                "Alloc"=>datap.allocs / 1000, "GC"=>gc_pct, "Mean"=>reference / 1e6, "Median"=>median_step / 1e6,
                 "Cost"=>cost, "Speedup"=>speedup, "Noise"=>noise_pct, "Δ ± σ"=>NaN, "Signif"=>NaN, "Reps"=>repetitions[benchmark], "σ"=>NaN, "Single"=>false)
             for (name, v) in row; data[i, col(name)] = v; end
             versions_key = (waterlily_ref, benchmark.tags[end], benchmark.tags[end-3])
             backend_idx = findall(x -> x == backends_str[i], unique(backends_str))[1]
-            plotting_data[k, backend_idx, :] .= (data[i, col("Min")], data[i, col("Cost")], data[i, col("Speedup")])
+            plotting_data[k, backend_idx, :] .= (data[i, col("Mean")], data[i, col("Cost")], data[i, col("Speedup")])
         end
         for i in axes(data, 1)
             ref_idx = findfirst(j -> data[j, col("Backend")] == data[i, col("Backend")] &&
@@ -179,7 +183,7 @@ for (i, case) in enumerate(cases)
         hl_per_backend = []
         for bkend in unique(backends_str)
             idxs = findall(x->x[col("Backend")]==bkend,eachrow(data))
-            min_indx = idxs[argmin(data[idxs,col("Min")])]
+            min_indx = idxs[argmin(data[idxs,col("Mean")])]
             push!(hl_per_backend, TextHighlighter((data, i, j) -> i == min_indx, Crayon(foreground=(32,125,56))))
         end
 
@@ -194,7 +198,7 @@ for (i, case) in enumerate(cases)
         fmt_signif = (v, i, j) -> (j == signif_col && v isa Number) ? @sprintf("%.1f%s", v, data[i, col("Single")] ? "*" : " ") : v
         pretty_table(disp_data; backend=:text, column_labels=disp_labels, column_label_alignment=:c,
             highlighters=[hl_base, hl_per_backend...],
-            formatters = [fmt_delta_dash, fmt_delta_sigma, fmt_signif, fmt__printf("%.2f", dcols("GC", "Min", "Med", "Max", "Cost", "Speedup")),
+            formatters = [fmt_delta_dash, fmt_delta_sigma, fmt_signif, fmt__printf("%.2f", dcols("GC", "Mean", "Median", "Cost", "Speedup")),
                           fmt__printf("%.1f", dcols("Alloc", "Noise"))])
         any(data[:, col("Single")]) && println("* Reps = 1 in this row or its reference row: σ and Signif only cover the scatter within a process.")
         # `Alloc` is only meaningful on SIMD (CPUx01): KA backends report kernel-launch bookkeeping
