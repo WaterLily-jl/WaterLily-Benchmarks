@@ -68,8 +68,8 @@ end
 cases = [x for x in all_cases if any(occursin.(Ref(x), benchmarks_list))]
 
 # Table columns. They are always looked up by name (`col`), so changing their order only needs changing these lists.
-header_top    = ["Backend", "WaterLily", "Julia", "FP", "Alloc", "GC",  "Min",  "Med",  "Max",  "Median", "Cost",        "Speedup", "Noise", "Δ ± σ", "Signif",  "Reps"]
-header_units  = [""       , ""         , ""     , ""  , "[k]"  , "[%]", "[ms]", "[ms]", "[ms]", "[ms]"  , "[ns/DOF/dt]", ""       , "[%]"  , "[%]"  , "[|Δ|/σ]", ""    ]
+header_top    = ["Backend", "WaterLily", "Julia", "FP", "Alloc", "GC",  "Mean", "Median", "Cost",        "Speedup", "Noise", "Δ ± σ", "Signif",  "Reps"]
+header_units  = [""       , ""         , ""     , ""  , "[k]"  , "[%]", "[ms]", "[ms]"  , "[ns/DOF/dt]", ""       , "[%]"  , "[%]"  , "[|Δ|/σ]", ""    ]
 hidden_cols   = ["σ", "Single"] # not displayed: σ of Δ, and whether it rests on a single process
 col(name) = findfirst(==(name), [header_top; hidden_cols])
 version_cols  = col.(["WaterLily", "Julia", "FP"])
@@ -109,7 +109,7 @@ for (i, case) in enumerate(cases)
     length(unique(log2p_str)) != 1 && @error "Case sizes mismatch."
     log2p_str = sort(log2p_str[1])
     f_test = benchmarks[1].tags[2]
-    # Table data. Min/Med/Max [ms] are over the run means; Min is the reference for Cost/Speedup/Δ.
+    # Table data. Mean [ms] is the min over runs of the mean step, the reference for Cost/Speedup/Δ.
     # Median [ms] is the min over runs of the median step, i.e. the typical step.
     data = Matrix{Any}(undef, length(benchmarks), length(header_top) + length(hidden_cols))
     plotting_data = zeros(length(log2p_str), length(unique(backends_str)), 3) # times, cost, speedups
@@ -142,12 +142,12 @@ for (i, case) in enumerate(cases)
             gc_pct = datap.gctimes[imin] / datap.times[imin] * 100.0
             waterlily_ref = String(find_git_ref(benchmark.tags[end-1]))
             row = ("Backend"=>backends_str[i], "WaterLily"=>waterlily_ref, "Julia"=>benchmark.tags[end], "FP"=>benchmark.tags[end-3],
-                "Alloc"=>datap.allocs / 1000, "GC"=>gc_pct, "Min"=>reference / 1e6, "Med"=>median(rmeans) / 1e6, "Max"=>maximum(rmeans) / 1e6,
-                "Median"=>median_step / 1e6, "Cost"=>cost, "Speedup"=>speedup, "Noise"=>noise_pct, "Δ ± σ"=>NaN, "Signif"=>NaN, "Reps"=>repetitions[benchmark], "σ"=>NaN, "Single"=>false)
+                "Alloc"=>datap.allocs / 1000, "GC"=>gc_pct, "Mean"=>reference / 1e6, "Median"=>median_step / 1e6,
+                "Cost"=>cost, "Speedup"=>speedup, "Noise"=>noise_pct, "Δ ± σ"=>NaN, "Signif"=>NaN, "Reps"=>repetitions[benchmark], "σ"=>NaN, "Single"=>false)
             for (name, v) in row; data[i, col(name)] = v; end
             versions_key = (waterlily_ref, benchmark.tags[end], benchmark.tags[end-3])
             backend_idx = findall(x -> x == backends_str[i], unique(backends_str))[1]
-            plotting_data[k, backend_idx, :] .= (data[i, col("Min")], data[i, col("Cost")], data[i, col("Speedup")])
+            plotting_data[k, backend_idx, :] .= (data[i, col("Mean")], data[i, col("Cost")], data[i, col("Speedup")])
         end
         for i in axes(data, 1)
             ref_idx = findfirst(j -> data[j, col("Backend")] == data[i, col("Backend")] &&
@@ -183,7 +183,7 @@ for (i, case) in enumerate(cases)
         hl_per_backend = []
         for bkend in unique(backends_str)
             idxs = findall(x->x[col("Backend")]==bkend,eachrow(data))
-            min_indx = idxs[argmin(data[idxs,col("Min")])]
+            min_indx = idxs[argmin(data[idxs,col("Mean")])]
             push!(hl_per_backend, TextHighlighter((data, i, j) -> i == min_indx, Crayon(foreground=(32,125,56))))
         end
 
@@ -198,7 +198,7 @@ for (i, case) in enumerate(cases)
         fmt_signif = (v, i, j) -> (j == signif_col && v isa Number) ? @sprintf("%.1f%s", v, data[i, col("Single")] ? "*" : " ") : v
         pretty_table(disp_data; backend=:text, column_labels=disp_labels, column_label_alignment=:c,
             highlighters=[hl_base, hl_per_backend...],
-            formatters = [fmt_delta_dash, fmt_delta_sigma, fmt_signif, fmt__printf("%.2f", dcols("GC", "Min", "Med", "Max", "Median", "Cost", "Speedup")),
+            formatters = [fmt_delta_dash, fmt_delta_sigma, fmt_signif, fmt__printf("%.2f", dcols("GC", "Mean", "Median", "Cost", "Speedup")),
                           fmt__printf("%.1f", dcols("Alloc", "Noise"))])
         any(data[:, col("Single")]) && println("* Reps = 1 in this row or its reference row: σ and Signif only cover the scatter within a process.")
         # `Alloc` is only meaningful on SIMD (CPUx01): KA backends report kernel-launch bookkeeping
