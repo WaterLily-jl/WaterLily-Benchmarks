@@ -111,6 +111,25 @@ run_benchmark () {
     julia_cmd
 }
 
+# Linux only: stop if a CPU is capped or there are too few CPUs for the threads (Julia also runs an
+# interactive thread), warn if turbo is off or the machine is busy. -f/--force runs anyway.
+check_machine () {
+    [ "$(uname -s)" = Linux ] || return 0
+    local errors=() warnings=() f t load=$(cut -d ' ' -f 1 /proc/loadavg)
+    for f in /sys/devices/system/cpu/cpu[0-9]*/cpufreq; do
+        [ -r $f/scaling_max_freq ] && (( $(<$f/scaling_max_freq) < $(<$f/cpuinfo_max_freq) )) &&
+            errors+=("CPU ${f//[^0-9]/} is capped below its maximum frequency. Fix: sudo cp $f/cpuinfo_max_freq $f/scaling_max_freq")
+    done
+    [[ " ${BACKENDS[*]} " == *" Array "* ]] && for t in "${THREADS[@]}"; do
+        (( t > 1 && $(nproc) <= t )) && errors+=("$(nproc) CPUs are available for -t $t, give at least $((t + 1)) (check taskset)")
+    done
+    [ "$(cat /sys/devices/system/cpu/intel_pstate/no_turbo 2>/dev/null)" = 1 ] && warnings+=("turbo is off")
+    awk -v l=$load 'BEGIN { exit !(l > 1) }' && warnings+=("load average is $load: other processes are busy")
+    (( ${#warnings[@]} )) && printf "WARNING: %s\n" "${warnings[@]}" >&2
+    (( ${#errors[@]} )) && { printf "ERROR: %s\n" "${errors[@]}" >&2; $FORCE || { echo "Fix the above, or run anyway with -f/--force." >&2; exit 1; }; }
+    return 0
+}
+
 # Print benchamrks info
 display_info () {
     echo "--------------------------------------"
@@ -147,6 +166,7 @@ BACKENDS=('Array' 'CuArray')
 THREADS=('4')
 UPDATE=false
 REPEATS=1                                                 # -r: repeat the whole sweep in new processes
+FORCE=false                                               # -f: run even if check_machine finds a problem
 DEVELOPED="checkpoints"                                   # -dev <dir>: developed-flow checkpoints; "" times the transient
 # Default sweep (run when -c is omitted) and per-case defaults for omitted -p/-s/-ft.
 CASES=('tgv' 'jelly')
@@ -217,6 +237,9 @@ case "$1" in
     REPEATS=$2
     shift
     ;;
+    --force|-f)
+    FORCE=true
+    ;;
     *)
     printf "ERROR: Invalid argument %s\n" "${1}" 1>&2
     exit 1
@@ -236,6 +259,9 @@ fi
 if ! [[ "$REPEATS" =~ ^[1-9][0-9]*$ ]]; then
     echo "ERROR: Invalid value '$REPEATS' for --repeats/-r (expected a positive integer)" >&2; exit 1
 fi
+
+# Stop before touching anything if the machine would distort the timings
+check_machine
 
 # Expand case args: single value broadcasts, N kept, omitted uses per-case defaults.
 NCASES=${#CASES[@]}
