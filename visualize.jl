@@ -18,7 +18,7 @@ function visualize_checkpoints(cases, log2p, ftype, backend; ckpt_dir="checkpoin
 end
 
 cases, log2p, max_steps, ftype, backend, data_dir = parse_cla(ARGS;
-    cases=all_cases, log2p=[(6,7), (3,4), (4,5), (5,6), (5,6)],
+    cases=all_cases, log2p=[(6,7), (6,7), (3,4), (3,4), (4,5), (5,6), (5,6)],
     max_steps=fill(25, length(all_cases)), ftype=fill(Float32, length(all_cases)),
     backend=Array, data_dir="checkpoints/"
 )

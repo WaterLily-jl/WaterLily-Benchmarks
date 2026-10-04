@@ -8,12 +8,12 @@ iarg(arg, args) = occursin.(arg, args) |> findfirst
 arg_value(arg) = split(ARGS[iarg(arg)], "=")[end]
 arg_value(arg, args) = split(args[iarg(arg, args)], "=")[end]
 metaparse(x) = eval(Meta.parse(x))
-getf(str) = eval(Symbol(str))
+getf(str) = eval(Symbol(replace(str, "-" => "_"))) # case "tgv-periodic" is the function `tgv_periodic`
 parsestringlist(x) = filter(!isempty, occursin(',',x) ? split(x,',') : split(x,' '))  .|> x -> filter(x -> !isspace(x), x)
 
 # Developed-flow checkpoints (see develop.jl): one JLD2 file per case, size and float type
 checkpoint_name(case, p, ft) = "$(case)_$(p)_$(ft).jld2"
-remeasure_case(case) = case in ("cylinder", "jelly")  # moving bodies
+remeasure_case(case) = case in ("cylinder", "jelly-biotsavart")  # moving bodies
 
 function parse_cla(args; cases=["tgv"], log2p=[(6,7)], max_steps=[100], ftype=[Float32], backend=Array, data_dir="data/")
     cases = !isnothing(iarg("cases", args)) ? arg_value("cases", args) |> metaparse : cases
@@ -49,7 +49,7 @@ end
 reset_sim!(sim, fname, dir) = !isempty(dir) && (load!(sim.flow; fname, dir); measure!(sim))
 
 # Allocations per step averaged over `s` steps: a single step is not representative when the
-# number of V-cycles varies from step to step (e.g. jelly). Deterministic, so one pass is enough.
+# number of V-cycles varies from step to step (e.g. jelly-biotsavart). Deterministic, so one pass is enough.
 function block_alloc_count(sim, ft, s, remeasure)
     g0 = Base.gc_num()
     for _ in 1:s
@@ -257,16 +257,19 @@ function rdir(dir, patterns)
 end
 
 # Benchmark and sizes
-all_cases = String["tgv", "sphere", "cylinder", "jelly", "donut"]
+all_cases = String["tgv", "tgv-periodic", "sphere", "sphere-biotsavart", "cylinder", "jelly-biotsavart", "donut"]
 tests_dets = Dict(
     "tgv" => Dict("size" => (1, 1, 1), "title" => "TGV"),
+    "tgv-periodic" => Dict("size" => (1, 1, 1), "title" => "Periodic TGV"),
     "sphere" => Dict("size" => (16, 6, 6), "title" => "Sphere"),
+    "sphere-biotsavart" => Dict("size" => (16, 6, 6), "title" => "Sphere, Biot-Savart BCs"),
     "cylinder" => Dict("size" => (9, 6, 2), "title" => "Moving cylinder"),
     "donut" => Dict("size" => (2, 1, 1), "title" => "Donut"),
-    "jelly" => Dict("size" => (1, 1, 4), "title" => "Jelly"),
+    "jelly-biotsavart" => Dict("size" => (1, 1, 4), "title" => "Jelly, Biot-Savart BCs"),
 )
 
 # Time [tU/L] to a developed flow (develop.jl): 10 jelly periods, half the ~20 TU tgv run, 100 for bluff bodies
 develop_time = Dict(
-    "tgv" => 10.0, "sphere" => 100.0, "cylinder" => 100.0, "donut" => 100.0, "jelly" => 10*Float64(π),
+    "tgv" => 10.0, "tgv-periodic" => 10.0, "sphere" => 100.0, "sphere-biotsavart" => 100.0, "cylinder" => 100.0,
+    "donut" => 100.0, "jelly-biotsavart" => 10*Float64(π),
 )
