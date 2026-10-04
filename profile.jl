@@ -27,7 +27,7 @@ if metaparse(arg_value("run")) == 1 # run profiling
     backend = !isnothing(iarg("backend")) ? arg_value("backend") |> x -> eval(Symbol(x)) : CuArray
 
     sim = getf(case)(log2p, backend; T=ftype)
-    run_profiling(sim, max_steps; remeasure=any(x->x==case, ["cylinder", "jelly"]))
+    run_profiling(sim, max_steps; remeasure=remeasure_case(case))
 else # postprocess profiling
     nsys_fields = ["range", "style", "total_proj_time", "total_range_time", "instances", "proj_avg", "proj_median", "proj_min", "proj_max", "proj_std", "total_gpu_ops", "avg_gpu_ops", "avg_range_level", "avg_num_child"]
     kernels = ["project!", "CFL!", "BDIM!", "BC!", "conv_diff!", "scale_u!", "copy_u0!", "exitBC!", "measure!"] # "BCTuple", "accelerate!"

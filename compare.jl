@@ -65,7 +65,7 @@ benchmarks_all_dict = Dict(Pair{String, Vector{BenchmarkGroup}}(k, []) for k in 
 for b in benchmarks_all
     push!(benchmarks_all_dict[b.tags[1]], b)
 end
-cases = [x for x in all_cases if any(occursin.(Ref(x), benchmarks_list))]
+cases = [x for x in all_cases if x in cases_str] # exact: "tgv" is also part of "tgv-periodic"
 
 # Table columns. They are always looked up by name (`col`), so changing their order only needs changing these lists.
 header_top    = ["Backend", "WaterLily", "Julia", "FP", "Alloc", "GC",  "Mean", "Median", "Cost",        "Speedup", "Noise", "Δ ± σ", "Signif",  "Reps"]
