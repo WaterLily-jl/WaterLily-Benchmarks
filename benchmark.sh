@@ -169,9 +169,9 @@ REPEATS=1                                                 # -r: repeat the whole
 FORCE=false                                               # -f: run even if check_machine finds a problem
 DEVELOPED="checkpoints"                                   # -dev <dir>: developed-flow checkpoints; "" times the transient
 # Default sweep (run when -c is omitted) and per-case defaults for omitted -p/-s/-ft.
-CASES=('tgv' 'jelly')
+CASES=('tgv' 'jelly-biotsavart')
 LOG2P=(); MAXSTEPS=(); FTYPE=()                            # provided -p/-s/-ft (empty => default)
-declare -A DEF_LOG2P=([tgv]=6,7 [tgv-periodic]=6,7 [jelly]=5,6 [jelly-biotsavart]=5,6 [sphere]=3,4 [sphere-biotsavart]=3,4 [cylinder]=4,5)  # default size per case; add cases here
+declare -A DEF_LOG2P=([tgv]=6,7 [tgv-periodic]=6,7 [jelly-biotsavart]=5,6 [sphere]=3,4 [sphere-biotsavart]=3,4 [cylinder]=4,5)  # default size per case; add cases here
 DEF_MAXSTEPS=25; DEF_FTYPE=Float32                         # default steps/type (uniform)
 
 # Parse arguments

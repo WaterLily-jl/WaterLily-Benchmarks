@@ -121,7 +121,7 @@ for (i, case) in enumerate(cases)
         printstyled("▶ log2p = $n\n", bold=true)
         # Per-step times reshaped to (S, runs); every run times the same steps. The reference is the min over
         # runs of the run means: the mean counts all the work of the steps, also when steps do different
-        # amounts of work (e.g. jelly), and the min drops runs slowed down from outside.
+        # amounts of work (e.g. jelly-biotsavart), and the min drops runs slowed down from outside.
         # noise = scatter of the run means / reference, which with `Reps` > 1 includes the std between processes.
         per_run(datap, stat) = vec(stat(reshape(datap.times, S, length(datap.times) ÷ S), dims=1))
         perstep_ref(datap) = minimum(per_run(datap, mean))

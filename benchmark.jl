@@ -43,7 +43,7 @@ function run_benchmarks(cases, log2p, max_steps, ftype, backend, bstr; data_dir=
 end
 
 cases, log2p, max_steps, ftype, backend, data_dir = parse_cla(ARGS;
-    cases=["tgv", "jelly"], log2p=[(6,7), (5,6)], max_steps=[25, 25], ftype=[Float32, Float32], backend=Array, data_dir="data/"
+    cases=["tgv", "jelly-biotsavart"], log2p=[(6,7), (5,6)], max_steps=[25, 25], ftype=[Float32, Float32], backend=Array, data_dir="data/"
 )
 # `--developed=<dir>`: time from the checkpoints in <dir> (see develop.jl); "" times the transient.
 # Exact flag match, since "developed" can also appear inside another value (e.g. a data_dir).

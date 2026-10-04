@@ -49,7 +49,7 @@ function donut(p, backend; Re=1e3, U=1, T=Float32)
     Simulation((2L, L, L), (U, 0, 0), R; ν, body, T, mem=backend)
 end
 
-function jelly(p, backend; Re=5e2, U=1, T=Float32, biot=false)
+function jelly_biotsavart(p, backend; Re=5e2, U=1, T=Float32)
     n = 2^p; R = T(2n/3); h = 4n - 2R; ν = U*R/Re
     ω = 2U/R
     @fastmath @inline A(t) = 1 .- SA[1,1,0]*cos(ω*t)/10
@@ -59,7 +59,5 @@ function jelly(p, backend; Re=5e2, U=1, T=Float32, biot=false)
                       (x,t)->A(t).*x + B(t) + C(t))
     plane = AutoBody((x,t)->x[3] - h, (x, t) -> x + C(t))
     body =  sphere - plane
-    biot && return BiotSimulation((n, n, 4n), (0, 0, -U), R; ν, body, T, mem=backend) # Biot-Savart open boundaries (BiotSavartBCs.jl)
-    Simulation((n, n, 4n), (0, 0, -U), R; ν, body, T, mem=backend)
+    BiotSimulation((n, n, 4n), (0, 0, -U), R; ν, body, T, mem=backend) # Biot-Savart open boundaries (BiotSavartBCs.jl)
 end
-jelly_biotsavart(p, backend; kwargs...) = jelly(p, backend; biot=true, kwargs...)
