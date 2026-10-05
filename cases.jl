@@ -24,7 +24,7 @@ function sphere(p, backend; Re=3700, U=1, T=Float32, biot=false)
 end
 sphere_biotsavart(p, backend; kwargs...) = sphere(p, backend; biot=true, kwargs...)
 
-function cylinder(p, backend; Re=1e3, U=1, T=Float32)
+function cylinder(p, backend; Re=1e3, U=1, T=Float32, biot=false)
     L = 2^p; R = T(L/2); ν = U*L/Re
     center = @SVector T[1.5L, 3L, 0]
     function sdf(xyz, t)
@@ -34,8 +34,11 @@ function cylinder(p, backend; Re=1e3, U=1, T=Float32)
     function map(xyz, t)
         xyz - SA[0, R*sin(t*U/L), 0]
     end
-    Simulation((9L, 6L, 2L), (U, 0, 0), L; U, ν, body=AutoBody(sdf, map), T, mem=backend, exitBC=true, perdir=(3,))
+    body = AutoBody(sdf, map)
+    biot && return BiotSimulation((9L, 6L, 2L), (U, 0, 0), L; U, ν, body, T, mem=backend, perdir=(3,)) # Biot-Savart open boundaries with periodic images (BiotSavartBCs.jl)
+    Simulation((9L, 6L, 2L), (U, 0, 0), L; U, ν, body, T, mem=backend, exitBC=true, perdir=(3,))
 end
+cylinder_biotsavart(p, backend; kwargs...) = cylinder(p, backend; biot=true, kwargs...)
 
 function donut(p, backend; Re=1e3, U=1, T=Float32)
     L = 2^p
