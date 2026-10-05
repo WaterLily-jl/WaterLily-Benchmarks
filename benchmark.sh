@@ -1,5 +1,7 @@
 #!/bin/bash
-THIS_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+# Paths handed to julia must be native: on Windows (Git Bash/MSYS) julia reads /c/foo as C:\c\foo
+native_path () { if command -v cygpath &> /dev/null; then cygpath -m "$1"; else echo "$1"; fi; }
+THIS_DIR=$(native_path "$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )")
 export JULIA_NUM_THREADS="auto"
 
 # Utils
@@ -283,7 +285,7 @@ if [ -z $WL_DIR ]; then # --waterlily-dir argument not passed
 else
     export WATERLILY_DIR=$WL_DIR
 fi
-export WATERLILY_DIR=$(realpath -e $WATERLILY_DIR)
+export WATERLILY_DIR=$(native_path "$(realpath -e $WATERLILY_DIR)")
 if [[ ! -d $WATERLILY_DIR && -L $WATERLILY_DIR ]]; then # check WATERLILY_DIR path exists
   echo "WaterLily path $WATERLILY_DIR does not exist."
 fi
@@ -302,7 +304,7 @@ if (( ${#BS_VERSIONS[@]} != 0 )); then
     if [ -z "${BIOTSAVART_DIR:-}" ]; then
         printf "ERROR: --biotsavart/-bs needs a local BiotSavartBCs clone via --biotsavart_dir/-bsd or \$BIOTSAVART_DIR.\n" 1>&2; exit 1
     fi
-    export BIOTSAVART_DIR=$(realpath -e "$BIOTSAVART_DIR")
+    export BIOTSAVART_DIR=$(native_path "$(realpath -e "$BIOTSAVART_DIR")")
     if (( ${#BS_VERSIONS[@]} != ${#WL_VERSIONS[@]} )); then
         printf "ERROR: --biotsavart has ${#BS_VERSIONS[@]} value(s) but must match --waterlily (${#WL_VERSIONS[@]}).\n" 1>&2; exit 1
     fi

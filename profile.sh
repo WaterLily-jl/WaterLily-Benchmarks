@@ -4,7 +4,9 @@
 ## sh profile.sh -ns "nsys" -c "tgv sphere cylinder" -p "8 5 6" -s 1000 -r 1
 ## sh profile.sh -ns "ncu" -k "327 355" -c "cylinder" -p "4,5,6" -s 20
 
-THIS_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+# Paths handed to julia must be native: on Windows (Git Bash/MSYS) julia reads /c/foo as C:\c\foo
+native_path () { if command -v cygpath &> /dev/null; then cygpath -m "$1"; else echo "$1"; fi; }
+THIS_DIR=$(native_path "$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )")
 
 ## Utils
 ## Grep current julia version
@@ -181,7 +183,7 @@ if [ -z $WL_DIR ]; then # --waterlily-dir argument not passed
 else
     export WATERLILY_DIR=$WL_DIR
 fi
-export WATERLILY_DIR=$(realpath -e $WATERLILY_DIR)
+export WATERLILY_DIR=$(native_path "$(realpath -e $WATERLILY_DIR)")
 if [[ ! -d $WATERLILY_DIR && -L $WATERLILY_DIR ]]; then # check WATERLILY_DIR path exists
   echo "WaterLily path $WATERLILY_DIR does not exist."
 fi
