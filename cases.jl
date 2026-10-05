@@ -59,5 +59,6 @@ function jelly_biotsavart(p, backend; Re=5e2, U=1, T=Float32)
                       (x,t)->A(t).*x + B(t) + C(t))
     plane = AutoBody((x,t)->x[3] - h, (x, t) -> x + C(t))
     body =  sphere - plane
-    BiotSimulation((n, n, 4n), (0, 0, -U), R; ν, body, T, mem=backend) # Biot-Savart open boundaries (BiotSavartBCs.jl)
+    # quarter domain: symmetry planes on the -x and -y faces, Biot-Savart open boundaries (BiotSavartBCs.jl) elsewhere
+    BiotSimulation((n, n, 4n), (0, 0, -U), R; ν, body, T, mem=backend, symmetry=(-1, -2))
 end
