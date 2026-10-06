@@ -102,13 +102,13 @@ update_environment () {
     # With -bs, [sources] already points at $BIOTSAVART_DIR, so Pkg.update resolves the local clone.
     # Pkg is loaded before activating: with --project, a Manifest from Julia <= 1.12 breaks `using Pkg` on 1.13.
     full_args=(-e "using Pkg; Pkg.activate(\"$THIS_DIR\"); Pkg.develop(PackageSpec(path=get(ENV, \"WATERLILY_DIR\", \"\"))); Pkg.update();")
-    julia_cmd
+    julia_cmd || { echo "ERROR: updating the environment for WaterLily $wl_version on Julia $version failed." >&2; exit 1; }
 }
 
 run_benchmark () {
     full_args=(--project=${THIS_DIR} --startup-file=no $args)
     echo "Running: julia ${full_args[@]}"
-    julia_cmd
+    julia_cmd || { echo "ERROR: the benchmark failed (WaterLily $wl_version, Julia $version, $backend, -t ${thread:-auto}), stopping the sweep." >&2; exit 1; }
 }
 
 # Linux only: stop if a CPU is capped or there are too few CPUs for the threads (Julia also runs an
@@ -128,6 +128,26 @@ check_machine () {
     (( ${#warnings[@]} )) && printf "WARNING: %s\n" "${warnings[@]}" >&2
     (( ${#errors[@]} )) && { printf "ERROR: %s\n" "${errors[@]}" >&2; $FORCE || { echo "Fix the above, or run anyway with -f/--force." >&2; exit 1; }; }
     return 0
+}
+
+# Checkpoints are git-LFS files. Fetch the ones of this sweep that are still LFS pointers, which is the state of a
+# clone made with GIT_LFS_SKIP_SMUDGE=1 (as in CI): only the needed files are downloaded, not the whole directory.
+fetch_checkpoints () {
+    [ -n "$DEVELOPED" ] && [ -d "$DEVELOPED" ] || return 0
+    local i n f rel files=()
+    for ((i=0; i<NCASES; i++)); do
+        for n in ${LOG2P[$i]//,/ }; do
+            f="$DEVELOPED/${CASES[$i]}_${n}_${FTYPE[$i]}.jld2"
+            [ -f "$f" ] && [ "$(wc -c < "$f")" -lt 1024 ] && grep -q "^version https://git-lfs" "$f" || continue
+            rel=$(realpath --relative-to="$THIS_DIR" "$f")
+            [[ $rel == ../* ]] && { echo "ERROR: $f is a git-LFS pointer outside this repository: run git lfs pull there." >&2; exit 1; }
+            files+=("$rel")
+        done
+    done
+    (( ${#files[@]} )) || return 0
+    command -v git-lfs &> /dev/null || { echo "ERROR: git-lfs is needed to fetch the checkpoints: ${files[*]}" >&2; exit 1; }
+    echo "Fetching ${#files[@]} checkpoint(s) from git-LFS: ${files[*]}"
+    git -C "$THIS_DIR" lfs pull --include="$(IFS=,; echo "${files[*]}")" || { echo "ERROR: git lfs pull failed." >&2; exit 1; }
 }
 
 # Print benchamrks info
@@ -273,6 +293,7 @@ done
 expand -p  "$dP"  "${LOG2P[@]}";    LOG2P=("${R[@]}")
 expand -s  "$dS"  "${MAXSTEPS[@]}"; MAXSTEPS=("${R[@]}")
 expand -ft "$dFT" "${FTYPE[@]}";    FTYPE=("${R[@]}")
+fetch_checkpoints  # only the checkpoints of this sweep, if they are git-LFS pointers
 
 # Check WATERLILY_DIR is set and functional
 if [ -z $WL_DIR ]; then # --waterlily-dir argument not passed

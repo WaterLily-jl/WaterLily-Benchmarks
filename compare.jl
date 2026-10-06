@@ -15,8 +15,13 @@ data_dir = !isnothing(iarg("data_dir", ARGS)) ? arg_value("data_dir", ARGS) : "d
 patterns = !isnothing(iarg("patterns", ARGS)) ? arg_value("patterns", ARGS) |> parsestringlist : all_cases
 patterns = patterns[end] == "" ? patterns[1:end-1] : patterns
 show_gc = !isnothing(iarg("--gc", ARGS)) && !(arg_value("--gc", ARGS) in ("0", "false"))
+markdown = !isnothing(iarg("--markdown", ARGS)) && !(arg_value("--markdown", ARGS) in ("0", "false")) # tables as GitHub markdown
 benchmarks_list = nothing
 !isnothing(plot_dir) &&  mkpath(plot_dir)
+if !isnothing(plot_dir)  # the plotting packages live in their own environment, see util.jl
+    use_plotting_env()
+    include("plotting.jl")
+end
 if isnothing(iarg("data_dir", ARGS)) && any(split(x, '.')[end] == "json" for x in ARGS)  # passed json files directly
     benchmarks_list = [f for f in ARGS if endswith(f, ".json")]
 elseif !any(split(x, '.')[end] == "json" for x in ARGS) # no json files passed, we rely on --data_dir
@@ -28,9 +33,13 @@ elseif !any(split(x, '.')[end] == "json" for x in ARGS) # no json files passed, 
 else
     @error "Cannot pass both --data_dir=$(data_dir) and json files."
 end
-println("Processing the following benchmarks:")
-for f in benchmarks_list
-    println("    ", f)
+if markdown
+    println("<details><summary>Benchmark files ($(length(benchmarks_list)))</summary>\n")
+    foreach(f -> println("- `", f, "`"), benchmarks_list)
+    println("\n</details>")
+else
+    println("Processing the following benchmarks:")
+    foreach(f -> println("    ", f), benchmarks_list)
 end
 benchmarks_all = [BenchmarkTools.load(f)[1] for f in benchmarks_list]
 # Merge repetitions (benchmark.sh -r): files with identical tags are the same benchmark run in separate
@@ -116,9 +125,13 @@ for (i, case) in enumerate(cases)
 
     S = benchmarks[1].tags[4]  # steps per run
     n_runs = length(benchmarks[1][backends_str[1]][first(log2p_str)][f_test].times) ÷ S ÷ repetitions[benchmarks[1]]
-    printstyled("Benchmark environment: $case $f_test ($(n_runs) runs × $(S) steps)\n", bold=true)
+    if markdown
+        println("\n### $case\n\n$f_test, $(n_runs) runs × $(S) steps")
+    else
+        printstyled("Benchmark environment: $case $f_test ($(n_runs) runs × $(S) steps)\n", bold=true)
+    end
     for (k, n) in enumerate(log2p_str)
-        printstyled("▶ log2p = $n\n", bold=true)
+        markdown ? println("\n**log2p = $n**\n") : printstyled("▶ log2p = $n\n", bold=true)
         # Per-step times reshaped to (S, runs); every run times the same steps. The reference is the min over
         # runs of the run means: the mean counts all the work of the steps, also when steps do different
         # amounts of work (e.g. jelly-biotsavart), and the min drops runs slowed down from outside.
@@ -176,31 +189,32 @@ for (i, case) in enumerate(cases)
                 speedup_base_idx2 = 1
             end
         end
-        hl_base = TextHighlighter(
-            (data, i, j) -> sorted_cond ? i == findfirst(x->x==speedup_base_idx, sorted_idx) : i==speedup_base_idx2,
-            crayon"fg:blue"
-        )
-        hl_per_backend = []
+        # Highlight the speedup baseline row (blue, bold in markdown) and the fastest row of each backend (green, italic)
+        is_base = (data, i, j) -> sorted_cond ? i == findfirst(x->x==speedup_base_idx, sorted_idx) : i==speedup_base_idx2
+        is_fastest = Function[]
         for bkend in unique(backends_str)
             idxs = findall(x->x[col("Backend")]==bkend,eachrow(data))
             min_indx = idxs[argmin(data[idxs,col("Mean")])]
-            push!(hl_per_backend, TextHighlighter((data, i, j) -> i == min_indx, Crayon(foreground=(32,125,56))))
+            push!(is_fastest, (data, i, j) -> i == min_indx)
         end
+        highlighters = markdown ?
+            [MarkdownHighlighter(is_base, MarkdownStyle(bold=true)); MarkdownHighlighter.(is_fastest, Ref(MarkdownStyle(italic=true)))] :
+            [TextHighlighter(is_base, crayon"fg:blue"); TextHighlighter.(is_fastest, Ref(Crayon(foreground=(32,125,56))))]
 
-        # hl_fast = TextHighlighter(f=(data, i, j) -> i == argmin(data[:, end-1]), crayon=Crayon(foreground=(32,125,56)))
         keep_cols = findall(h -> show_gc || h != "GC", header_top)
         disp_data = data[:, keep_cols]
-        disp_labels = [header_top[keep_cols], header_units[keep_cols]]
+        disp_labels = markdown ? [strip.(header_top[keep_cols] .* " " .* header_units[keep_cols])] : # one line: "Mean [ms]"
+                                 [header_top[keep_cols], header_units[keep_cols]]
         dcols(names...) = findall(in(names), header_top[keep_cols]) # indices in the displayed table
         delta_col, signif_col = only(dcols("Δ ± σ")), only(dcols("Signif"))
         fmt_delta_dash = (v, i, j) -> (j in (delta_col, signif_col) && v isa Number && isnan(v)) ? "-" : v
         fmt_delta_sigma = (v, i, j) -> (j == delta_col && v isa Number) ? @sprintf("%+.1f ± %4.1f", v, data[i, col("σ")]) : v
         fmt_signif = (v, i, j) -> (j == signif_col && v isa Number) ? @sprintf("%.1f%s", v, data[i, col("Single")] ? "*" : " ") : v
-        pretty_table(disp_data; backend=:text, column_labels=disp_labels, column_label_alignment=:c,
-            highlighters=[hl_base, hl_per_backend...],
+        pretty_table(disp_data; backend = markdown ? :markdown : :text, column_labels=disp_labels, column_label_alignment=:c,
+            highlighters,
             formatters = [fmt_delta_dash, fmt_delta_sigma, fmt_signif, fmt__printf("%.2f", dcols("GC", "Mean", "Median", "Cost", "Speedup")),
                           fmt__printf("%.1f", dcols("Alloc", "Noise"))])
-        any(data[:, col("Single")]) && println("* Reps = 1 in this row or its reference row: σ and Signif only cover the scatter within a process.")
+        any(data[:, col("Single")]) && println(markdown ? "\n\\*" : "*", " Reps = 1 in this row or its reference row: σ and Signif only cover the scatter within a process.")
         # `Alloc` is only meaningful on SIMD (CPUx01): KA backends report kernel-launch bookkeeping
     end
 

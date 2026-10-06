@@ -1,5 +1,6 @@
 include("cases.jl")
 include("util.jl")
+use_plotting_env()  # GLMakie lives in the plotting environment, see util.jl
 using GLMakie  # WaterLily's `viz!` extension
 
 # Render a vorticity image per checkpoint into `checkpoints/viz/` as a visual check. Float64 cases are skipped.
