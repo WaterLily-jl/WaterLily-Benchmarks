@@ -1,49 +1,43 @@
 name: WaterLily benchmarks
-description: >-
-  Benchmark two refs of a WaterLily.jl checkout with WaterLily-Benchmarks (benchmark.sh, then compare.jl) and report the
-  comparison as a markdown table in the job summary, as a workflow artifact and, optionally, as a pull request comment.
+description: Benchmark two refs of a WaterLily.jl checkout and report the compare.jl table (job summary, artifact, PR comment).
 author: WaterLily-jl
 
 inputs:
   waterlily-dir:
-    description: Path of the WaterLily.jl checkout. Both refs must exist in it, e.g. fetch the PR head into a local branch first.
+    description: WaterLily.jl checkout containing both refs.
     default: ${{ github.workspace }}
   base:
-    description: Reference ref. Δ ± σ and Signif compare every row with the row of this ref and the same backend.
+    description: Reference ref, the Δ ± σ reference row of each backend.
     default: master
   head:
-    description: Ref to compare with `base`, e.g. `pr-123`.
+    description: Ref compared with base, e.g. pr-123.
     required: true
   args:
-    description: >-
-      benchmark.sh arguments (cases, sizes, steps, backends, threads, repetitions, see the README). Only letters,
-      digits, spaces and the characters , . _ = " - are accepted. Empty means the default.
+    description: benchmark.sh arguments, restricted to [A-Za-z0-9 ,._="-]. Empty means the default.
     default: -b Array -t "1 2" -r 2
   force:
-    description: >-
-      Run even if the machine check of benchmark.sh finds a problem (-f). Right for shared runners, set it to false on
-      a dedicated benchmark machine.
+    description: Pass -f (skip the machine check), for shared runners.
     default: "true"
   julia-version:
-    description: Julia version, as accepted by julia-actions/setup-julia.
+    description: For julia-actions/setup-julia.
     default: "1.11"
   harness-ref:
-    description: WaterLily-Benchmarks ref to run (its benchmark.sh, compare.jl and checkpoints). Defaults to the ref of this action.
+    description: WaterLily-Benchmarks ref to run. Defaults to this action's ref.
     default: ${{ github.action_ref }}
   harness-path:
-    description: Where WaterLily-Benchmarks is checked out, relative to the workspace.
+    description: Checkout path of WaterLily-Benchmarks, relative to the workspace.
     default: WaterLily-Benchmarks
   pr:
-    description: Pull request number to post the report on, as one comment per `label` that later runs update. Empty posts nothing.
+    description: Pull request to comment on, one comment per label that later runs update. Empty posts nothing.
     default: ""
   label:
-    description: Tells apart the report comments of several configurations on one PR, e.g. cpu and gpu.
+    description: Name of the comment, e.g. cpu or gpu.
     default: ""
   artifact:
-    description: Name of the workflow artifact with the JSON results and the report. Empty uploads nothing.
+    description: Artifact with the JSON results and the report. Empty uploads nothing.
     default: benchmark-results
   token:
-    description: Token with pull-requests write permission. Only the step that posts the comment sees it.
+    description: Token with pull-requests write permission, used only to comment.
     default: ${{ github.token }}
 
 outputs:
@@ -57,8 +51,7 @@ outputs:
 runs:
   using: composite
   steps:
-    # The checkpoints are git-LFS files: they stay pointers here, and benchmark.sh fetches those of the sweep.
-    - name: Check out WaterLily-Benchmarks
+    - name: Check out WaterLily-Benchmarks (LFS checkpoints as pointers, fetched by benchmark.sh)
       uses: actions/checkout@v7
       with:
         repository: WaterLily-jl/WaterLily-Benchmarks
@@ -81,7 +74,6 @@ runs:
 
     - uses: julia-actions/cache@v3
 
-    # The PR code runs here, so no token is in the environment of this step.
     - name: Benchmark ${{ inputs.base }} and ${{ inputs.head }}
       id: benchmark
       shell: bash

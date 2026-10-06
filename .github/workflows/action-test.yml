@@ -1,7 +1,6 @@
 name: Test the action
 
-# Runs action.yml on demand against WaterLily.jl: master against a commit a few steps behind it, with a short sweep,
-# no PR comment. Use it to check the action (or a change of benchmark.sh / compare.jl) before WaterLily.jl relies on it.
+# Runs action.yml against WaterLily.jl, master vs master~N, short sweep, no comment.
 on:
   workflow_dispatch:
     inputs:
@@ -22,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
-      - name: Check out WaterLily.jl master with history
+      - name: Check out WaterLily.jl master
         uses: actions/checkout@v7
         with:
           repository: WaterLily-jl/WaterLily.jl
@@ -30,8 +29,8 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Branch pr-test at master~${{ inputs.commits-back }}
-        run: git branch pr-test "master~${{ inputs.commits-back }}" && git log --oneline -1 master && git log --oneline -1 pr-test
-      - name: Check out this revision of WaterLily-Benchmarks for the action definition
+        run: git branch pr-test "master~${{ inputs.commits-back }}"
+      - name: Check out this revision of the action
         uses: actions/checkout@v7
         with:
           path: action
