@@ -8,6 +8,7 @@
 
 include("cases.jl")
 include("util.jl")
+use_plotting_env()  # CairoMakie lives in the plotting environment, see util.jl
 using CairoMakie
 
 function run_profiling(sim, max_steps; remeasure=false)

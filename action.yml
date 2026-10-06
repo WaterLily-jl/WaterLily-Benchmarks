@@ -1,0 +1,160 @@
+name: WaterLily benchmarks
+description: Benchmark two refs of a WaterLily.jl checkout and report the compare.jl table (job summary, artifact, PR comment).
+author: WaterLily-jl
+
+inputs:
+  waterlily-dir:
+    description: WaterLily.jl checkout containing both refs.
+    default: ${{ github.workspace }}
+  base:
+    description: Reference ref, the Δ ± σ reference row of each backend.
+    default: master
+  head:
+    description: Ref compared with base, e.g. pr-123.
+    required: true
+  args:
+    description: benchmark.sh arguments, restricted to [A-Za-z0-9 ,._="-]. Empty means the default.
+    default: -b Array -t "1 2" -r 2
+  force:
+    description: Pass -f (skip the machine check), for shared runners.
+    default: "true"
+  julia-version:
+    description: For julia-actions/setup-julia.
+    default: "1.11"
+  harness-ref:
+    description: WaterLily-Benchmarks ref to run. Defaults to this action's ref.
+    default: ${{ github.action_ref }}
+  harness-path:
+    description: Checkout path of WaterLily-Benchmarks, relative to the workspace.
+    default: WaterLily-Benchmarks
+  pr:
+    description: Pull request to comment on, one comment per label that later runs update. Empty posts nothing.
+    default: ""
+  label:
+    description: Name of the comment, e.g. cpu or gpu.
+    default: ""
+  artifact:
+    description: Artifact with the JSON results and the report. Empty uploads nothing.
+    default: benchmark-results
+  token:
+    description: Token with pull-requests write permission, used only to comment.
+    default: ${{ github.token }}
+
+outputs:
+  report:
+    description: Path of the markdown report.
+    value: ${{ steps.compare.outputs.report }}
+  data:
+    description: Directory of the JSON results.
+    value: ${{ steps.compare.outputs.data }}
+
+runs:
+  using: composite
+  steps:
+    - name: Check out WaterLily-Benchmarks (LFS checkpoints as pointers, fetched by benchmark.sh)
+      uses: actions/checkout@v7
+      with:
+        repository: WaterLily-jl/WaterLily-Benchmarks
+        ref: ${{ inputs.harness-ref }}
+        path: ${{ inputs.harness-path }}
+        persist-credentials: false
+      env:
+        GIT_LFS_SKIP_SMUDGE: "1"
+
+    - name: Cache the git-LFS checkpoints
+      uses: actions/cache@v6
+      with:
+        path: ${{ inputs.harness-path }}/.git/lfs
+        key: waterlily-benchmarks-lfs-${{ hashFiles(format('{0}/checkpoints/*.jld2', inputs.harness-path)) }}
+        restore-keys: waterlily-benchmarks-lfs-
+
+    - uses: julia-actions/setup-julia@v3
+      with:
+        version: ${{ inputs.julia-version }}
+
+    - uses: julia-actions/cache@v3
+
+    - name: Benchmark ${{ inputs.base }} and ${{ inputs.head }}
+      id: benchmark
+      shell: bash
+      working-directory: ${{ inputs.harness-path }}
+      env:
+        WATERLILY_DIR: ${{ inputs.waterlily-dir }}
+        BASE: ${{ inputs.base }}
+        HEAD: ${{ inputs.head }}
+        ARGS: ${{ inputs.args }}
+        FORCE: ${{ inputs.force }}
+      run: |
+        read -r ARGS <<< "$ARGS"                          # trim
+        [[ -n $ARGS ]] || ARGS='-b Array -t "1 2" -r 2'  # the input default
+        [[ $ARGS =~ ^[A-Za-z0-9\ ,._=\"-]*$ ]] || { echo "::error::unexpected characters in args: $ARGS"; exit 1; }
+        [[ $FORCE == true ]] && force=-f || force=
+        echo "command=./benchmark.sh -w \"$BASE $HEAD\" -u true -dd data/ci $force $ARGS" >> "$GITHUB_OUTPUT"
+        eval "set -- $ARGS"
+        ./benchmark.sh -w "$BASE $HEAD" -u true -dd data/ci $force "$@"
+
+    - name: Compare and write the report
+      id: compare
+      shell: bash
+      working-directory: ${{ inputs.harness-path }}
+      env:
+        WATERLILY_DIR: ${{ inputs.waterlily-dir }}
+        BASE: ${{ inputs.base }}
+        HEAD: ${{ inputs.head }}
+        LABEL: ${{ inputs.label }}
+        COMMAND: ${{ steps.benchmark.outputs.command }}
+      run: |
+        julia --project compare.jl --data_dir=data/ci --markdown --speedup_base="$BASE" > tables.md
+        {
+          echo "<!-- waterlily-benchmarks${LABEL:+:$LABEL} -->"
+          echo "## Benchmarks${LABEL:+ ($LABEL)}: $BASE vs $HEAD"
+          echo
+          echo "WaterLily $BASE \`$(git -C "$WATERLILY_DIR" rev-parse --short "$BASE")\` vs $HEAD \`$(git -C "$WATERLILY_DIR" rev-parse --short "$HEAD")\`," \
+               "\`$COMMAND\`, Julia $(julia -v | cut -d' ' -f3) on $RUNNER_OS ($RUNNER_NAME)," \
+               "[run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)."
+          echo
+          cat tables.md
+          echo
+          echo "<details><summary>Reading the table</summary>"
+          echo
+          echo "**Mean** is the time per step: the minimum over runs of the mean step of each run. **Δ ± σ** is the cost" \
+               "difference with the $BASE row of the same backend, positive is slower, and **Signif** = |Δ|/σ: below 1 it is" \
+               "scatter, from 2 to 3 believe it. **Noise** is the scatter of the row and **Reps** the separate processes merged" \
+               "into it. **Alloc** is only meaningful on CPUx01 (SIMD). The bold row is the speedup baseline, the italic one" \
+               "the fastest of its backend. See the [methodology](https://github.com/WaterLily-jl/WaterLily-Benchmarks#measurement-methodology)."
+          echo
+          echo "</details>"
+        } > report.md
+        cat report.md >> "$GITHUB_STEP_SUMMARY"
+        echo "report=$PWD/report.md" >> "$GITHUB_OUTPUT"
+        echo "data=$PWD/data/ci" >> "$GITHUB_OUTPUT"
+
+    - name: Upload the results
+      if: inputs.artifact != ''
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ inputs.artifact }}
+        path: |
+          ${{ inputs.harness-path }}/data/ci
+          ${{ inputs.harness-path }}/report.md
+
+    - name: Post the report on the pull request
+      if: inputs.pr != ''
+      uses: actions/github-script@v9
+      env:
+        REPORT: ${{ steps.compare.outputs.report }}
+        PR: ${{ inputs.pr }}
+      with:
+        github-token: ${{ inputs.token }}
+        script: |
+          const body = require('fs').readFileSync(process.env.REPORT, 'utf8');
+          const marker = body.split('\n')[0];  // <!-- waterlily-benchmarks[:label] -->, one comment per label
+          const {owner, repo} = context.repo;
+          const issue_number = Number(process.env.PR);
+          const comments = await github.paginate(github.rest.issues.listComments, {owner, repo, issue_number, per_page: 100});
+          const existing = comments.find(c => c.body && c.body.startsWith(marker + '\n'));
+          if (existing) {
+            await github.rest.issues.updateComment({owner, repo, comment_id: existing.id, body});
+          } else {
+            await github.rest.issues.createComment({owner, repo, issue_number, body});
+          }
