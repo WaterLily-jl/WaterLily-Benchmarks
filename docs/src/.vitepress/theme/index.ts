@@ -1,7 +1,7 @@
 // .vitepress/theme/index.ts
 // WaterLily-Benchmarks: a copy of the default theme of DocumenterVitepress 0.3.7 (template/src/.vitepress/theme/index.ts)
 // that opens pages in the "Expand all" (full width) layout of the readability menu; only the lines marked `full width`
-// differ. The other theme files are the defaults, which DocumenterVitepress copies in at build time.
+// differ. overrides.css is ours too; the other theme files are the defaults, which DocumenterVitepress copies in at build time.
 import { h } from 'vue'
 import DefaultTheme from 'vitepress/theme'
 import type { Theme as ThemeConfig } from 'vitepress'

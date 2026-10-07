@@ -1,0 +1,11 @@
+/* Loaded after the DocumenterVitepress styles; this file replaces its empty default.
+   The site name on the home page is wider than the 600px that DocumenterVitepress gives its gradient text, which left
+   the last letter of "WaterLily-Benchmarks" unpainted: let it take its width, and wrap after the hyphen on small screens. */
+.VPHero .name,
+.VPHero .clip {
+  max-width: none;
+}
+
+.VPHero .clip {
+  white-space: normal;
+}
