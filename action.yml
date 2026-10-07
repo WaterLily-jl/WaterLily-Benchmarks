@@ -61,6 +61,16 @@ runs:
       env:
         GIT_LFS_SKIP_SMUDGE: "1"
 
+    # -bs pairs BiotSavartBCs refs with the WaterLily ones; benchmark.sh checks them out in $BIOTSAVART_DIR
+    - name: Check out BiotSavartBCs.jl (args contain -bs)
+      if: contains(inputs.args, '-bs')
+      uses: actions/checkout@v7
+      with:
+        repository: WaterLily-jl/BiotSavartBCs.jl
+        path: BiotSavartBCs.jl
+        fetch-depth: 0
+        persist-credentials: false
+
     - name: Cache the git-LFS checkpoints
       uses: actions/cache@v6
       with:
@@ -80,6 +90,7 @@ runs:
       working-directory: ${{ inputs.harness-path }}
       env:
         WATERLILY_DIR: ${{ inputs.waterlily-dir }}
+        BIOTSAVART_DIR: ${{ github.workspace }}/BiotSavartBCs.jl
         BASE: ${{ inputs.base }}
         HEAD: ${{ inputs.head }}
         ARGS: ${{ inputs.args }}
