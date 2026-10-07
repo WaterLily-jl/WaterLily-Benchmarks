@@ -169,7 +169,7 @@ develop_time = Dict(
     "cylinder-biotsavart" => 100.0, "donut" => 100.0, "jelly-biotsavart" => 10*Float64(π),
 )
 
-# Sizes of the developed-flow checkpoints: the DEF_LOG2P defaults of benchmark.sh, plus donut
+# Sizes of the developed-flow checkpoints, the same as the DEF_LOG2P defaults of benchmark.sh
 checkpoint_log2p = Dict(
     "tgv" => (6,7), "tgv-periodic" => (6,7), "sphere" => (3,4), "sphere-biotsavart" => (3,4), "cylinder" => (4,5),
     "cylinder-biotsavart" => (4,5), "donut" => (5,6), "jelly-biotsavart" => (5,6),
