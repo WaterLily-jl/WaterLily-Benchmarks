@@ -9,3 +9,6 @@ LocalPreferences.toml
 **data*/
 **/plots*/
 gpu/
+docs/build/
+docs/node_modules/
+docs/src/assets/cases/

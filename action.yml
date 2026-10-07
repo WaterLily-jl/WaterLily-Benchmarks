@@ -156,7 +156,7 @@ runs:
                "difference with the ${names[0]} row of the same backend, positive is slower, and **Signif** = |Δ|/σ: below 1 it is" \
                "scatter, from 2 to 3 believe it. **Noise** is the scatter of the row and **Reps** the separate processes merged" \
                "into it. **Alloc** is only meaningful on CPUx01 (SIMD). The bold row is the speedup baseline, the italic one" \
-               "the fastest of its backend. See the [methodology](https://github.com/WaterLily-jl/WaterLily-Benchmarks#measurement-methodology)."
+               "the fastest of its backend. See the [methodology](https://waterlily-jl.github.io/WaterLily-Benchmarks/dev/methodology)."
           echo
           echo "</details>"
         } > report.md
