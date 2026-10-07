@@ -1,5 +1,6 @@
 include("cases.jl")
 include("util.jl")
+use_plotting_env()  # GLMakie lives in the plotting environment, see util.jl
 using GLMakie  # WaterLily's `viz!` extension
 
 # Render a vorticity image per checkpoint into `checkpoints/viz/` as a visual check. Float64 cases are skipped.
@@ -17,9 +18,5 @@ function visualize_checkpoints(cases, log2p, ftype, backend; ckpt_dir="checkpoin
     end
 end
 
-cases, log2p, max_steps, ftype, backend, data_dir = parse_cla(ARGS;
-    cases=all_cases, log2p=[(6,7), (6,7), (3,4), (3,4), (4,5), (5,6), (5,6)],
-    max_steps=fill(25, length(all_cases)), ftype=fill(Float32, length(all_cases)),
-    backend=Array, data_dir="checkpoints/"
-)
+cases, log2p, max_steps, ftype, backend, data_dir = parse_checkpoint_cla(ARGS)
 visualize_checkpoints(cases, log2p, ftype, backend; ckpt_dir=data_dir)

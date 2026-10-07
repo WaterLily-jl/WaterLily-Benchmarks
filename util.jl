@@ -1,5 +1,5 @@
 using BenchmarkTools
-using Plots, StatsPlots, LaTeXStrings, CategoricalArrays, Printf, ColorSchemes
+using Printf
 using KernelAbstractions
 using JLD2  # WaterLily's save!/load! extension (checkpoints)
 
@@ -79,11 +79,13 @@ function add_to_suite!(suite, sim_function; case="", p=(3,4,5), s=100, ft=Float3
 end
 
 waterlily_dir = get(ENV, "WATERLILY_DIR", "")
-git_hash = read(`git -C $waterlily_dir rev-parse --short HEAD`, String) |> x -> strip(x, '\n')
-# Name of the git ref at `hash` (or `hash` if none). Refs can share a commit, so the pick is fixed: local
-# branches, then tags, then remote branches, never `HEAD`, and master/main win a tie.
-function find_git_ref(hash)
-    refs = [split(r, ' ') for r in split(read(`git -C $waterlily_dir show-ref -d`, String), '\n') if !isempty(r)]
+biotsavart_dir = get(ENV, "BIOTSAVART_DIR", "")  # names the BiotSavartBCs refs of -bs runs in compare.jl
+short_hash(dir) = read(`git -C $dir rev-parse --short HEAD`, String) |> x -> strip(x, '\n')
+git_hash = short_hash(waterlily_dir)
+# Name of the git ref at `hash` in the repository `dir` (or `hash` if none). Refs can share a commit, so the pick
+# is fixed: local branches, then tags, then remote branches, never `HEAD`, and master/main win a tie.
+function find_git_ref(hash; dir=waterlily_dir)
+    refs = [split(r, ' ') for r in split(read(`git -C $dir show-ref -d`, String), '\n') if !isempty(r)]
     for prefix in ("refs/heads/", "refs/tags/", "refs/remotes/")
         names = [split(ref[length(prefix)+1:end], '^')[1] for (h, ref) in refs
                  if startswith(h, hash) && startswith(ref, prefix) && !endswith(ref, "/HEAD")]
@@ -93,8 +95,22 @@ function find_git_ref(hash)
     end
     return hash
 end
-find_git_hash(ref) = read(`git -C $waterlily_dir rev-parse --short $ref`, String) |> x -> strip(x, '\n')
 is_git_hash(hash) = find_git_ref(hash) == hash
+# A -bs run is tagged `<WaterLily hash>+bs<BiotSavartBCs hash>` (benchmark.jl), any other run `<WaterLily hash>`
+split_hash(tag) = (h = split(tag, "+bs"; limit=2); (String(h[1]), length(h) == 2 ? String(h[2]) : nothing))
+find_bs_ref(hash) = ispath(joinpath(biotsavart_dir, ".git")) ? find_git_ref(hash; dir=biotsavart_dir) : hash
+# WaterLily column of a run: the WaterLily ref, and for a -bs run the BiotSavartBCs ref, e.g. "master (bs main)"
+function run_ref(tag)
+    wl, bs = split_hash(tag)
+    return isnothing(bs) ? String(find_git_ref(wl)) : "$(find_git_ref(wl)) (bs $(find_bs_ref(bs)))"
+end
+# Hashes of a run and the names of their refs, which the --speedup_base values of compare.jl match
+function run_hashes(tag)
+    wl, bs = split_hash(tag)
+    hashes = [wl, find_git_ref(wl)]
+    isnothing(bs) || push!(hashes, bs, find_bs_ref(bs))
+    return String.(hashes)
+end
 hostname = gethostname()
 
 backend_str = Dict(Array => "CPUx"*@sprintf("%.2d", Threads.nthreads()))
@@ -110,135 +126,13 @@ _cuda && (using CUDA: CuArray; backend_str[CuArray] = "GPU-NVIDIA")
 _rocm && (using AMDGPU: ROCArray; backend_str[ROCArray] = "GPU-AMD")
 (_cuda || _rocm) && (using GPUArrays: allowscalar; allowscalar(false))
 
-# Plotting utils
-using Plots
-
-fontsize = 20
-speedup_fontsize = 16
-Plots.default(
-    fontfamily = "Computer Modern",
-    linewidth = 1,
-    framestyle = :box,
-    grid = false,
-    left_margin = Plots.Measures.Length(:mm, 24),
-    right_margin = Plots.Measures.Length(:mm, 0),
-    bottom_margin = Plots.Measures.Length(:mm, 5),
-    top_margin = Plots.Measures.Length(:mm, 5),
-    legendfontsize = fontsize,
-    tickfontsize = fontsize,
-    labelfontsize = fontsize,
-)
-
-# Fancy logarithmic scale ticks for plotting
-# https://github.com/JuliaPlots/Plots.jl/issues/3318
-"""
-    get_tickslogscale(lims; skiplog=false)
-Return a tuple (ticks, ticklabels) for the axis limit `lims`
-where multiples of 10 are major ticks with label and minor ticks have no label
-skiplog argument should be set to true if `lims` is already in log scale.
-"""
-function get_tickslogscale(lims::Tuple{T, T}; skiplog::Bool=false) where {T<:AbstractFloat}
-    mags = if skiplog
-        # if the limits are already in log scale
-        floor.(lims)
-    else
-        floor.(log10.(lims))
-    end
-    rlims = if skiplog; 10 .^(lims) else lims end
-
-    total_tickvalues = []
-    total_ticknames = []
-
-    rgs = range(mags..., step=1)
-    for (i, m) in enumerate(rgs)
-        if m >= 0
-            tickvalues = range(Int(10^m), Int(10^(m+1)); step=Int(10^m))
-            ticknames  = vcat([string(round(Int, 10^(m)))],
-                              ["" for i in 2:9],
-                              [string(round(Int, 10^(m+1)))])
-        else
-            tickvalues = range(10^m, 10^(m+1); step=10^m)
-            ticknames  = vcat([string(10^(m))], ["" for i in 2:9], [string(10^(m+1))])
-        end
-
-        if i==1
-            # lower bound
-            indexlb = findlast(x->x<rlims[1], tickvalues)
-            if isnothing(indexlb); indexlb=1 end
-        else
-            indexlb = 1
-        end
-        if i==length(rgs)
-            # higher bound
-            indexhb = findfirst(x->x>rlims[2], tickvalues)
-            if isnothing(indexhb); indexhb=10 end
-        else
-            # do not take the last index if not the last magnitude
-            indexhb = 9
-        end
-
-        total_tickvalues = vcat(total_tickvalues, tickvalues[indexlb:indexhb])
-        total_ticknames = vcat(total_ticknames, ticknames[indexlb:indexhb])
-    end
-    return (total_tickvalues[1:end-1], total_ticknames[1:end-1])
-end
-
-"""
-    fancylogscale!(p; forcex=false, forcey=false)
-Transform the ticks to log scale for the axis with scale=:log10.
-forcex and forcey can be set to true to force the transformation
-if the variable is already expressed in log10 units.
-"""
-function fancylogscale!(p::Plots.Subplot; forcex::Bool=false, forcey::Bool=false)
-    kwargs = Dict()
-    for (ax, force, lims) in zip((:x, :y), (forcex, forcey), (xlims, ylims))
-        axis = Symbol("$(ax)axis")
-        ticks = Symbol("$(ax)ticks")
-
-        if force || p.attr[axis][:scale] == :log10
-            # Get limits of the plot and convert to Float
-            ls = float.(lims(p))
-            ts = if force
-                (vals, labs) = get_tickslogscale(ls; skiplog=true)
-                (log10.(vals), labs)
-            else
-                get_tickslogscale(ls)
-            end
-            kwargs[ticks] = ts
-        end
-    end
-
-    if length(kwargs) > 0
-        plot!(p; kwargs...)
-    end
-    p
-end
-fancylogscale!(p::Plots.Plot; kwargs...) = (fancylogscale!(p.subplots[1]; kwargs...); return p)
-fancylogscale!(; kwargs...) = fancylogscale!(plot!(); kwargs...)
-
-function Base.unique(ctg::CategoricalArray)
-    l = levels(ctg)
-    newctg = CategoricalArray(l)
-    levels!(newctg, l)
-end
-
-function annotated_groupedbar(xx, yy, group; series_annotations="", bar_width=1.0, plot_kwargs...)
-    gp = groupedbar(xx, yy, group=group, series_annotations="", bar_width=bar_width; plot_kwargs...)
-    m = length(unique(group))       # number of items per group
-    n = length(unique(xx))          # number of groups
-    xt = (1:n) .- 0.5               # plot x-coordinate of groups' centers
-    dx = bar_width/m                # each group occupies bar_width units along x
-    # dy = diff([extrema(yy)...])[1]
-    x2 = [xt[i] + (j - m/2 - 0.4)*dx for j in 1:m, i in 1:n][:]
-    k = 1
-    for i in 1:n, j in 1:m
-        y0 = gp[1][2j][:y][i]*1.4# + 0.04*dy
-        if isfinite(y0)
-            annotate!(x2[(i-1)*m + j]*1.02, y0, text(series_annotations[k], :center, :black, speedup_fontsize))
-            k += 1
-        end
-    end
-    gp
+# Plotting packages (Plots, Makie, ...) live in their own environment, plotting/, so that benchmarking (and CI) never
+# installs them. Scripts that plot stack it on the load path with this, before `using` them.
+function use_plotting_env()
+    env = joinpath(@__DIR__, "plotting")
+    any(f -> startswith(f, "Manifest") && endswith(f, ".toml"), readdir(env)) || error(
+        "The plotting environment $(env) is not instantiated. Run once: julia --project=$(env) -e 'using Pkg; Pkg.instantiate()'")
+    env in LOAD_PATH || push!(LOAD_PATH, env)
 end
 
 # Find files utils
@@ -273,3 +167,16 @@ develop_time = Dict(
     "tgv" => 10.0, "tgv-periodic" => 10.0, "sphere" => 100.0, "sphere-biotsavart" => 100.0, "cylinder" => 100.0,
     "donut" => 100.0, "jelly-biotsavart" => 10*Float64(π),
 )
+
+# Sizes of the developed-flow checkpoints: the DEF_LOG2P defaults of benchmark.sh, plus donut
+checkpoint_log2p = Dict(
+    "tgv" => (6,7), "tgv-periodic" => (6,7), "sphere" => (3,4), "sphere-biotsavart" => (3,4), "cylinder" => (4,5),
+    "donut" => (5,6), "jelly-biotsavart" => (5,6),
+)
+
+# CLA of develop.jl and visualize.jl: all cases at their checkpoint sizes in Float32, unless ARGS say otherwise
+function parse_checkpoint_cla(args)
+    cases = parse_cla(args; cases=all_cases)[1]
+    return parse_cla(args; cases, log2p=[checkpoint_log2p[c] for c in cases], ftype=fill(Float32, length(cases)),
+                     backend=Array, data_dir="checkpoints/")
+end

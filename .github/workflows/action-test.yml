@@ -1,0 +1,43 @@
+name: Test the action
+
+# Runs action.yml against WaterLily.jl, master vs master~N, short sweep, no comment.
+on:
+  workflow_dispatch:
+    inputs:
+      commits-back:
+        description: Compare master with master~N
+        default: "3"
+        type: string
+      args:
+        description: benchmark.sh arguments
+        default: -b Array -t "1 2" -r 1 -c tgv -p 6 -s 5
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Check out WaterLily.jl master
+        uses: actions/checkout@v7
+        with:
+          repository: WaterLily-jl/WaterLily.jl
+          ref: master
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Branch pr-test at master~${{ inputs.commits-back }}
+        run: git branch pr-test "master~${{ inputs.commits-back }}"
+      - name: Check out this revision of the action
+        uses: actions/checkout@v7
+        with:
+          path: action
+          persist-credentials: false
+      - uses: ./action
+        with:
+          head: pr-test
+          args: ${{ inputs.args }}
+          harness-ref: ${{ github.sha }}
+          artifact: action-test
