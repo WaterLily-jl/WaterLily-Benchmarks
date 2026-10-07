@@ -102,6 +102,13 @@ runs:
         [[ $FORCE == true ]] && force=-f || force=
         echo "command=./benchmark.sh -w \"$BASE $HEAD\" -u true -dd data/ci $force $DEFAULTS $ARGS" >> "$GITHUB_OUTPUT"
         eval "set -- $DEFAULTS $ARGS"
+        # The refs that run: -w and -bs in ARGS replace "$BASE $HEAD" (the last value wins, as in benchmark.sh)
+        refs="$BASE $HEAD" bs_refs=
+        for ((i = 1; i < $#; i++)); do
+          j=$((i + 1))
+          case ${!i} in -w|--waterlily) refs=${!j} ;; -bs|--biotsavart) bs_refs=${!j} ;; esac
+        done
+        { echo "refs=$refs"; echo "bs-refs=$bs_refs"; } >> "$GITHUB_OUTPUT"
         ./benchmark.sh -w "$BASE $HEAD" -u true -dd data/ci $force "$@"
 
     - name: Compare and write the report
@@ -111,18 +118,30 @@ runs:
       env:
         WATERLILY_DIR: ${{ inputs.waterlily-dir }}
         BIOTSAVART_DIR: ${{ github.workspace }}/BiotSavartBCs.jl  # names the BiotSavartBCs refs of a -bs run
-        BASE: ${{ inputs.base }}
-        HEAD: ${{ inputs.head }}
+        REFS: ${{ steps.benchmark.outputs.refs }}
+        BS_REFS: ${{ steps.benchmark.outputs.bs-refs }}
         LABEL: ${{ inputs.label }}
         COMMAND: ${{ steps.benchmark.outputs.command }}
       run: |
-        julia --project compare.jl --data_dir=data/ci --markdown --speedup_base="$BASE" > tables.md
+        read -ra wl <<< "$REFS"; read -ra bs <<< "$BS_REFS"
+        hash () { git -C "$1" rev-parse --short "$2^{commit}"; }
+        vs () { local out=$1; shift; for x; do out+=" vs $x"; done; echo "$out"; }
+        # One name per run, its WaterLily ref and with -bs its BiotSavartBCs ref, as compare.jl shows them.
+        # The first run is the baseline, passed by hash: refs at the same commit share a name in compare.jl.
+        names=() commits=() bs_commits=()
+        for k in "${!wl[@]}"; do
+          names+=("${wl[k]}${bs:+ (bs ${bs[k]})}")
+          commits+=("${wl[k]} \`$(hash "$WATERLILY_DIR" "${wl[k]}")\`")
+          [[ -z $bs ]] || bs_commits+=("${bs[k]} \`$(hash "$BIOTSAVART_DIR" "${bs[k]}")\`")
+        done
+        versions="WaterLily $(vs "${commits[@]}")${bs:+, BiotSavartBCs $(vs "${bs_commits[@]}")}"
+        baseline=$(hash "$WATERLILY_DIR" "${wl[0]}")${bs:+,$(hash "$BIOTSAVART_DIR" "${bs[0]}")}
+        julia --project compare.jl --data_dir=data/ci --markdown --speedup_base="$baseline" > tables.md
         {
           echo "<!-- waterlily-benchmarks${LABEL:+:$LABEL} -->"
-          echo "## Benchmarks${LABEL:+ ($LABEL)}: $BASE vs $HEAD"
+          echo "## Benchmarks${LABEL:+ ($LABEL)}: $(vs "${names[@]}")"
           echo
-          echo "WaterLily $BASE \`$(git -C "$WATERLILY_DIR" rev-parse --short "$BASE")\` vs $HEAD \`$(git -C "$WATERLILY_DIR" rev-parse --short "$HEAD")\`," \
-               "\`$COMMAND\`, Julia $(julia -v | cut -d' ' -f3) on $RUNNER_OS ($RUNNER_NAME)," \
+          echo "$versions, \`$COMMAND\`, Julia $(julia -v | cut -d' ' -f3) on $RUNNER_OS ($RUNNER_NAME)," \
                "[run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)."
           echo
           cat tables.md
@@ -130,7 +149,7 @@ runs:
           echo "<details><summary>Reading the table</summary>"
           echo
           echo "**Mean** is the time per step: the minimum over runs of the mean step of each run. **Δ ± σ** is the cost" \
-               "difference with the $BASE row of the same backend, positive is slower, and **Signif** = |Δ|/σ: below 1 it is" \
+               "difference with the ${names[0]} row of the same backend, positive is slower, and **Signif** = |Δ|/σ: below 1 it is" \
                "scatter, from 2 to 3 believe it. **Noise** is the scatter of the row and **Reps** the separate processes merged" \
                "into it. **Alloc** is only meaningful on CPUx01 (SIMD). The bold row is the speedup baseline, the italic one" \
                "the fastest of its backend. See the [methodology](https://github.com/WaterLily-jl/WaterLily-Benchmarks#measurement-methodology)."

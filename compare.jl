@@ -96,17 +96,17 @@ for (i, case) in enumerate(cases)
     benchmarks = benchmarks_all_dict[case]
     if !isnothing(speedup_base)
         speedup_base_idx = findfirst(
-            x->length(intersect([x.tags...,run_tokens(x.tags[end-1])...],speedup_base))==length(speedup_base), benchmarks
+            x->length(intersect([x.tags...,run_hashes(x.tags[end-1])...],speedup_base))==length(speedup_base), benchmarks
         )
         if isnothing(speedup_base_idx)
             available = unique([(b.tags[end-2], run_ref(b.tags[end-1]), b.tags[end], b.tags[end-3]) for b in benchmarks])
             avail_str = join(["  - Backend=$(t[1]), WaterLily=$(t[2]), Julia=$(t[3]), FP=$(t[4])" for t in available], "\n")
-            missing_tokens = setdiff(speedup_base, reduce(vcat, [[b.tags[end-2], b.tags[end], b.tags[end-3], run_tokens(b.tags[end-1])...] for b in benchmarks]; init=String[]))
-            error("Cannot find base speedup for '$case' matching tokens $(speedup_base).\n" *
+            unmatched = setdiff(speedup_base, reduce(vcat, [[b.tags[end-2], b.tags[end], b.tags[end-3], run_hashes(b.tags[end-1])...] for b in benchmarks]; init=String[]))
+            error("Cannot find base speedup for '$case' matching $(speedup_base).\n" *
                   "Available (Backend, WaterLily ref, Julia, FP) for '$case':\n" *
                   "$avail_str\n" *
-                  "Unmatched token(s): $(isempty(missing_tokens) ? "none — but no single row matched all tokens" : missing_tokens)\n" *
-                  "Note: token matching is case-sensitive (e.g. \"CPUx04\", not \"cpux04\").")
+                  "Unmatched value(s): $(isempty(unmatched) ? "none, but no single row matched all of them" : unmatched)\n" *
+                  "Note: matching is case-sensitive (e.g. \"CPUx04\", not \"cpux04\").")
         end
     else
         speedup_base_idx = 1

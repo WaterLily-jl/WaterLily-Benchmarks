@@ -104,12 +104,12 @@ function run_ref(tag)
     wl, bs = split_hash(tag)
     return isnothing(bs) ? String(find_git_ref(wl)) : "$(find_git_ref(wl)) (bs $(find_bs_ref(bs)))"
 end
-# Hashes and ref names of a run, for the --speedup_base tokens of compare.jl
-function run_tokens(tag)
+# Hashes of a run and the names of their refs, which the --speedup_base values of compare.jl match
+function run_hashes(tag)
     wl, bs = split_hash(tag)
-    tokens = [wl, find_git_ref(wl)]
-    isnothing(bs) || push!(tokens, bs, find_bs_ref(bs))
-    return String.(tokens)
+    hashes = [wl, find_git_ref(wl)]
+    isnothing(bs) || push!(hashes, bs, find_bs_ref(bs))
+    return String.(hashes)
 end
 hostname = gethostname()
 
