@@ -12,6 +12,6 @@ PrettyTables = "08abe8d2-0d0c-5749-adfa-8a2ac140af0d"
 StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 WaterLily = "ed894a53-35f9-47f1-b17f-85db9237eebd"
 
-# BiotSavartBCs (used by the `-biotsavart` cases) pinned until v1.0.0 is registered; jelly needs `symmetry`
+# BiotSavartBCs (used by the `-biotsavart` cases) follows its main branch, not the registered release; `-bs` points it at a local clone
 [sources]
-BiotSavartBCs = {url = "https://github.com/WaterLily-jl/BiotSavartBCs.jl", rev = "350542f660bd48f9a4a440785dcd138d42054540"}
+BiotSavartBCs = {url = "https://github.com/WaterLily-jl/BiotSavartBCs.jl", rev = "main"}
