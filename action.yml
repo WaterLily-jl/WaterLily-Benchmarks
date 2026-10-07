@@ -13,8 +13,8 @@ inputs:
     description: Ref compared with base, e.g. pr-123.
     required: true
   args:
-    description: benchmark.sh arguments, restricted to [A-Za-z0-9 ,._="-]. Empty means the default.
-    default: -b Array -t "1 2" -r 2
+    description: benchmark.sh arguments appended to the defaults `-b Array -t "1 2" -r 2` (a later value wins), restricted to [A-Za-z0-9 ,._="-].
+    default: ""
   force:
     description: Pass -f (skip the machine check), for shared runners.
     default: "true"
@@ -96,12 +96,12 @@ runs:
         ARGS: ${{ inputs.args }}
         FORCE: ${{ inputs.force }}
       run: |
-        read -r ARGS <<< "$ARGS"                          # trim
-        [[ -n $ARGS ]] || ARGS='-b Array -t "1 2" -r 2'  # the input default
+        read -r ARGS <<< "$ARGS"  # trim
         [[ $ARGS =~ ^[A-Za-z0-9\ ,._=\"-]*$ ]] || { echo "::error::unexpected characters in args: $ARGS"; exit 1; }
+        DEFAULTS='-b Array -t "1 2" -r 2'  # CPU only, two thread counts, two repetitions; later values in ARGS win
         [[ $FORCE == true ]] && force=-f || force=
-        echo "command=./benchmark.sh -w \"$BASE $HEAD\" -u true -dd data/ci $force $ARGS" >> "$GITHUB_OUTPUT"
-        eval "set -- $ARGS"
+        echo "command=./benchmark.sh -w \"$BASE $HEAD\" -u true -dd data/ci $force $DEFAULTS $ARGS" >> "$GITHUB_OUTPUT"
+        eval "set -- $DEFAULTS $ARGS"
         ./benchmark.sh -w "$BASE $HEAD" -u true -dd data/ci $force "$@"
 
     - name: Compare and write the report
