@@ -13,7 +13,7 @@ parsestringlist(x) = filter(!isempty, occursin(',',x) ? split(x,',') : split(x,'
 
 # Developed-flow checkpoints (see develop.jl): one JLD2 file per case, size and float type
 checkpoint_name(case, p, ft) = "$(case)_$(p)_$(ft).jld2"
-remeasure_case(case) = case in ("cylinder", "jelly-biotsavart")  # moving bodies
+remeasure_case(case) = case in ("cylinder", "cylinder-biotsavart", "jelly-biotsavart")  # moving bodies
 
 function parse_cla(args; cases=["tgv"], log2p=[(6,7)], max_steps=[100], ftype=[Float32], backend=Array, data_dir="data/")
     cases = !isnothing(iarg("cases", args)) ? arg_value("cases", args) |> metaparse : cases
@@ -151,13 +151,14 @@ function rdir(dir, patterns)
 end
 
 # Benchmark and sizes
-all_cases = String["tgv", "tgv-periodic", "sphere", "sphere-biotsavart", "cylinder", "jelly-biotsavart", "donut"]
+all_cases = String["tgv", "tgv-periodic", "sphere", "sphere-biotsavart", "cylinder", "cylinder-biotsavart", "jelly-biotsavart", "donut"]
 tests_dets = Dict(
     "tgv" => Dict("size" => (1, 1, 1), "title" => "TGV"),
     "tgv-periodic" => Dict("size" => (1, 1, 1), "title" => "Periodic TGV"),
     "sphere" => Dict("size" => (16, 6, 6), "title" => "Sphere"),
     "sphere-biotsavart" => Dict("size" => (16, 6, 6), "title" => "Sphere, Biot-Savart BCs"),
     "cylinder" => Dict("size" => (9, 6, 2), "title" => "Moving cylinder"),
+    "cylinder-biotsavart" => Dict("size" => (9, 6, 2), "title" => "Moving cylinder, Biot-Savart BCs"),
     "donut" => Dict("size" => (2, 1, 1), "title" => "Donut"),
     "jelly-biotsavart" => Dict("size" => (1, 1, 4), "title" => "Jelly, Biot-Savart BCs"),
 )
@@ -165,13 +166,13 @@ tests_dets = Dict(
 # Time [tU/L] to a developed flow (develop.jl): 10 jelly periods, half the ~20 TU tgv run, 100 for bluff bodies
 develop_time = Dict(
     "tgv" => 10.0, "tgv-periodic" => 10.0, "sphere" => 100.0, "sphere-biotsavart" => 100.0, "cylinder" => 100.0,
-    "donut" => 100.0, "jelly-biotsavart" => 10*Float64(π),
+    "cylinder-biotsavart" => 100.0, "donut" => 100.0, "jelly-biotsavart" => 10*Float64(π),
 )
 
 # Sizes of the developed-flow checkpoints: the DEF_LOG2P defaults of benchmark.sh, plus donut
 checkpoint_log2p = Dict(
     "tgv" => (6,7), "tgv-periodic" => (6,7), "sphere" => (3,4), "sphere-biotsavart" => (3,4), "cylinder" => (4,5),
-    "donut" => (5,6), "jelly-biotsavart" => (5,6),
+    "cylinder-biotsavart" => (4,5), "donut" => (5,6), "jelly-biotsavart" => (5,6),
 )
 
 # CLA of develop.jl and visualize.jl: all cases at their checkpoint sizes in Float32, unless ARGS say otherwise
