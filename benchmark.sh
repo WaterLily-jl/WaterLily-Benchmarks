@@ -207,7 +207,7 @@ DEVELOPED="checkpoints"                                   # -dev <dir>: develope
 # Default sweep (run when -c is omitted) and per-case defaults for omitted -p/-s/-ft.
 CASES=('tgv' 'jelly-biotsavart')
 LOG2P=(); MAXSTEPS=(); FTYPE=()                            # provided -p/-s/-ft (empty => default)
-declare -A DEF_LOG2P=([tgv]=6,7 [tgv-periodic]=6,7 [jelly-biotsavart]=5,6 [sphere]=3,4 [sphere-biotsavart]=3,4 [cylinder]=4,5 [cylinder-biotsavart]=4,5 [donut]=5,6)  # default size per case; add cases here and to checkpoint_log2p in util.jl
+declare -A DEF_LOG2P=([tgv]=6,7 [tgv-periodic]=6,7 [jelly-biotsavart]=5,6 [sphere]=3,4 [sphere-biotsavart]=3,4 [cylinder]=4,5 [cylinder-biotsavart]=4,5 [donut]=5,6)  # default size per case; add cases here and to checkpoint_log2p in src/util.jl
 DEF_MAXSTEPS=25; DEF_FTYPE=Float32                         # default steps/type (uniform)
 
 # Parse arguments
@@ -381,7 +381,7 @@ LOG2P=$(join_array_tuple_comma "${LOG2P[*]}")
 MAXSTEPS=$(join_array_comma "${MAXSTEPS[*]}")
 FTYPE=$(join_array_comma "${FTYPE[*]}")
 args_cases="--cases=$CASES --log2p=$LOG2P --max_steps=$MAXSTEPS --ftype=$FTYPE --data_dir=$DATA_DIR"
-args_cases="$args_cases --developed=$DEVELOPED"  # always forwarded, so -dev "" reaches benchmark.jl
+args_cases="$args_cases --developed=$DEVELOPED"  # always forwarded, so -dev "" reaches src/benchmark.jl
 
 # Benchmarks. With -r N the sweep runs N times in new processes, reversing the version order on even
 # repetitions, to sample a machine state that outlives a process. compare.jl merges the repetitions.
@@ -406,12 +406,12 @@ for rep in $(seq 1 $REPEATS) ; do
             for backend in "${BACKENDS[@]}" ; do
                 if [ "${backend}" == "Array" ]; then
                     for thread in "${THREADS[@]}" ; do
-                        args="-t $thread ${THIS_DIR}/benchmark.jl --backend=$backend $args_cases $args_rep"
+                        args="-t $thread ${THIS_DIR}/src/benchmark.jl --backend=$backend $args_cases $args_rep"
                         update_environment
                         run_benchmark
                     done
                 else
-                    args="${THIS_DIR}/benchmark.jl --backend=$backend $args_cases $args_rep"
+                    args="${THIS_DIR}/src/benchmark.jl --backend=$backend $args_cases $args_rep"
                     update_environment
                     run_benchmark
                 fi

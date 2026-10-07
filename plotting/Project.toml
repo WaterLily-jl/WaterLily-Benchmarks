@@ -1,5 +1,5 @@
-# Plotting packages for compare.jl (--plot_dir), profile.jl and visualize.jl. This environment is stacked on top of
-# the benchmark one by `use_plotting_env()` (util.jl), so that benchmarking never installs them. Instantiate it once:
+# Plotting packages for compare.jl (--plot_dir), src/profile.jl and visualize.jl. This environment is stacked on top of
+# the benchmark one by `use_plotting_env()` (src/util.jl), so that benchmarking never installs them. Instantiate it once:
 #     julia --project=plotting -e 'using Pkg; Pkg.instantiate()'
 [deps]
 CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
