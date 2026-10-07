@@ -49,4 +49,4 @@ git clone https://github.com/WaterLily-jl/WaterLily-Benchmarks && cd WaterLily-B
 julia --project compare.jl --speedup_base=master
 ```
 
-`compare.jl` prints one table per case and size, with the time per step, the speedup, and the difference of each row against `master` on the same backend with its significance. See [Getting started](getting-started.md) for the requirements and [Methodology](methodology.md) for what the columns mean.
+`-b Array -t "1 4"` runs on the CPU with 1 and 4 threads. To also run on a GPU, add its backend to `-b`: `-b "Array CuArray"` for NVIDIA, `-b "Array ROCArray"` for AMD. `compare.jl` prints one table per case and size, with the time per step, the speedup, and the difference of each row against `master` on the same backend with its significance. See [Getting started](getting-started.md) for the requirements and [Methodology](methodology.md) for what the columns mean.

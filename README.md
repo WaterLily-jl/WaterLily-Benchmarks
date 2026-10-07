@@ -14,7 +14,7 @@ git clone https://github.com/WaterLily-jl/WaterLily-Benchmarks && cd WaterLily-B
 julia --project compare.jl --speedup_base=master
 ```
 
-Drop `-b Array` to also run on an NVIDIA GPU. On Ubuntu, run the script as `./benchmark.sh`, not `sh benchmark.sh` (`sh` is `dash`); on Windows, use Git Bash. A table of `compare.jl`, here for the `jelly-biotsavart` case comparing WaterLily v1.8.0 with `master` (see the [methodology](https://waterlily-jl.github.io/WaterLily-Benchmarks/dev/methodology) for the columns):
+`-b Array -t "1 4"` runs on the CPU with 1 and 4 threads. To also run on a GPU, add its backend to `-b`: `-b "Array CuArray"` for NVIDIA, `-b "Array ROCArray"` for AMD. On Ubuntu, run the script as `./benchmark.sh`, not `sh benchmark.sh` (`sh` is `dash`); on Windows, use Git Bash. A table of `compare.jl`, here for the `jelly-biotsavart` case comparing WaterLily v1.8.0 with `master` (see the [methodology](https://waterlily-jl.github.io/WaterLily-Benchmarks/dev/methodology) for the columns):
 
 ```
 ▶ log2p = 5

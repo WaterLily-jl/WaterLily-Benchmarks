@@ -25,7 +25,7 @@ The checkpoints take about 1 GB. To download only the ones you use, clone with `
 julia --project compare.jl
 ```
 
-This runs the default sweep on the current state of `$WATERLILY_DIR` and the current `julia`: the `tgv` (at `log2p = 6,7`) and `jelly-biotsavart` (`5,6`) cases, 25 steps, `Float32`, on the CPU with 4 threads and on an NVIDIA GPU. Without a GPU, add `-b Array`. The first run installs the benchmark environment and develops WaterLily from `$WATERLILY_DIR` into it, and the first GPU run makes the GPU environment (see [Environments](environments.md)). Add `-u true` to update them when the Julia version or the WaterLily dependencies change (see [Updating the environment](@ref)).
+This runs the default sweep on the current state of `$WATERLILY_DIR` and the current `julia`: the `tgv` (at `log2p = 6,7`) and `jelly-biotsavart` (`5,6`) cases, 25 steps, `Float32`, on the CPU with 4 threads and on an NVIDIA GPU (the default backends, `-b "Array CuArray"`). Without an NVIDIA GPU, run on the CPU only with `-b Array`. The first run installs the benchmark environment and develops WaterLily from `$WATERLILY_DIR` into it, and the first GPU run makes the GPU environment (see [Environments](environments.md)). Add `-u true` to update them when the Julia version or the WaterLily dependencies change (see [Updating the environment](@ref)).
 
 `benchmark.sh` writes one JSON file per case and backend into `data/benchmark/<hostname>_<WaterLily hash>/`, and `compare.jl` prints one table per case and size. [Methodology](methodology.md) explains the columns.
 
@@ -38,7 +38,7 @@ On a laptop, or any machine whose clock speed changes with temperature or power,
 julia --project compare.jl --speedup_base=master
 ```
 
-`-w` takes branches, tags or commit hashes. The `Δ ± σ` and `Signif` columns compare each row with the `master` row of the same backend. See [Running benchmarks](benchmarks.md) for all the options of `benchmark.sh` and [Comparing results](compare.md) for `compare.jl`.
+`-w` takes branches, tags or commit hashes, and `-b Array -t "1 4"` runs on the CPU with 1 and 4 threads. To also run on a GPU, add its backend to `-b`: `-b "Array CuArray"` for NVIDIA, `-b "Array ROCArray"` for AMD. The `Δ ± σ` and `Signif` columns compare each row with the `master` row of the same backend. See [Running benchmarks](benchmarks.md) for all the options of `benchmark.sh` and [Comparing results](compare.md) for `compare.jl`.
 
 ## Plotting
 
