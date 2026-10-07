@@ -348,13 +348,17 @@ if (( ${#BS_VERSIONS[@]} != 0 )); then
     if (( ${#BS_VERSIONS[@]} != ${#WL_VERSIONS[@]} )); then
         printf "ERROR: --biotsavart has ${#BS_VERSIONS[@]} value(s) but must match --waterlily (${#WL_VERSIONS[@]}).\n" 1>&2; exit 1
     fi
-    # Pkg.develop cannot override a [sources] pin: repoint it at the local clone, force -u true, restore on exit
-    cp "$THIS_DIR/Project.toml" "$THIS_DIR/Project.toml.bsbak"
-    trap 'mv -f "$THIS_DIR/Project.toml.bsbak" "$THIS_DIR/Project.toml" 2>/dev/null' EXIT
+    # Pkg.develop cannot override a [sources] pin: repoint it at the local clone and force -u true. Pkg then keeps the
+    # clone's path in the Manifests even after Project.toml is restored, so all the environments are restored on exit.
+    BS_SNAP=$(mktemp -d)
+    cp -a "$THIS_DIR/Project.toml" "$BS_SNAP/"
+    [ -f "$THIS_DIR/Manifest.toml" ] && cp -a "$THIS_DIR/Manifest.toml" "$BS_SNAP/"
+    [ -d "$THIS_DIR/gpu" ] && cp -a "$THIS_DIR/gpu" "$BS_SNAP/"
+    trap 'rm -rf "$THIS_DIR/Manifest.toml" "$THIS_DIR/gpu"; cp -a "$BS_SNAP/." "$THIS_DIR/"; rm -rf "$BS_SNAP"' EXIT
     # match the [sources] entry (`= {...}`), not the [deps] UUID (`= "..."`)
     sed -i "s|^BiotSavartBCs = {.*|BiotSavartBCs = {path = \"$BIOTSAVART_DIR\"}|" "$THIS_DIR/Project.toml"
     UPDATE=true
-    echo "Note: -bs repointed [sources] BiotSavartBCs -> $BIOTSAVART_DIR and forced -u true (restored on exit)."
+    echo "Note: -bs repointed [sources] BiotSavartBCs -> $BIOTSAVART_DIR and forced -u true (environments restored on exit)."
 fi
 
 # Check if Julia versions have been specified, and if so check that juliaup is installed
