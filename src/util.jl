@@ -122,6 +122,47 @@ haskey(gpu_pkg, backend_arg) && isnothing(Base.find_package(gpu_pkg[backend_arg]
 backend_arg == "CuArray" && (using CUDA: CuArray, allowscalar; backend_str[CuArray] = "GPU-NVIDIA"; allowscalar(false))
 backend_arg == "ROCArray" && (using AMDGPU: ROCArray, allowscalar; backend_str[ROCArray] = "GPU-AMD"; allowscalar(false))
 
+# The environment of a run, saved next to its JSON files (benchmark.jl) so that the results can be reproduced: the resolved
+# Manifest, one file per distinct Manifest named Manifest-<Julia version>-<environment>-<content hash>.toml, and
+# environments.toml, which gives each JSON file its Manifest and the WaterLily preferences (LocalPreferences.toml).
+using SHA, TOML
+function active_manifest()  # the Manifest Julia loads: a versioned one wins
+    project = dirname(Base.active_project())
+    versioned = joinpath(project, "Manifest-v$(VERSION.major).$(VERSION.minor).toml")
+    return isfile(versioned) ? versioned : joinpath(project, "Manifest.toml")
+end
+# A package developed from a local clone (WaterLily from $WATERLILY_DIR, BiotSavartBCs with -bs) gets the path of a clone
+# next to the Manifest, `<name>.jl`, and the commit of the clone it ran from (`clone-commit`, which Pkg ignores), so the
+# Manifest does not depend on the machine and says which code ran.
+function portable_manifest(file)
+    lines, name = readlines(file), ""
+    for (i, line) in enumerate(lines)
+        m = match(r"^\[\[(?:deps\.)?(.+)\]\]$", line); isnothing(m) || (name = m[1])
+        m = match(r"^path = \"(.*)\"$", line); isnothing(m) && continue
+        dir = unescape_string(m[1]); isabspath(dir) || (dir = joinpath(dirname(file), dir))
+        lines[i] = "path = \"$name.jl\""
+        ispath(joinpath(dir, ".git")) || continue
+        lines[i] *= "\nclone-commit = \"$(short_hash(dir))\""
+        isempty(read(`git -C $dir status --porcelain --untracked-files=no`, String)) || (lines[i] *= "\nclone-changes = true")
+    end
+    return join(lines, '\n') * '\n'
+end
+function save_environment(dir, json)
+    text = portable_manifest(active_manifest())
+    manifest = "Manifest-$(VERSION)-$(get(gpu_pkg, backend_arg, "cpu"))-$(bytes2hex(sha256(text))[1:8]).toml"
+    isfile(joinpath(dir, manifest)) || write(joinpath(dir, manifest), text)
+    entry = Dict{String,Any}("manifest" => manifest)
+    preferences = joinpath(dirname(Base.active_project()), "LocalPreferences.toml")
+    isfile(preferences) && (entry["preferences"] = TOML.parsefile(preferences))
+    index = joinpath(dir, "environments.toml")
+    environments = isfile(index) ? TOML.parsefile(index) : Dict{String,Any}()
+    environments[json] = entry
+    open(index, "w") do io
+        println(io, "# The environment of each benchmark file of this directory, written by benchmark.jl\n")
+        TOML.print(io, environments; sorted=true)
+    end
+end
+
 # Plotting packages (Plots, Makie, ...) live in their own environment, plotting/, so that benchmarking (and CI) never
 # installs them. Scripts that plot stack it on the load path with this, before `using` them.
 function use_plotting_env()
@@ -131,13 +172,14 @@ function use_plotting_env()
     env in LOAD_PATH || push!(LOAD_PATH, env)
 end
 
-# Find files utils
+# Find files utils: the JSON files under `dir` whose path matches one of the patterns (the data directories also
+# hold the Manifests of the runs, see save_environment)
 using Glob
 function rdir(dir, patterns)
     results = String[]
     patterns = [Glob.FilenameMatch("*" * p * "*") for p in patterns]
     for (root, _, files) in walkdir(dir)
-        fpaths = joinpath.(root, files)
+        fpaths = joinpath.(root, filter(endswith(".json"), files))
         length(fpaths) == 0 && continue
         for p in patterns
             push!(results,fpaths[occursin.(Ref(p),fpaths)]...)

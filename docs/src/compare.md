@@ -10,7 +10,7 @@ julia --project compare.jl --data_dir=data/benchmark --patterns="tgv jelly-biots
 
 Either search a directory, or pass the files, not both:
 
-- `--data_dir=<dir>` (default `data/benchmark`) with `--patterns="<p1> <p2>"` (space- or comma-separated, default: every case) reads the files under `<dir>` whose path matches `*<pattern>*`. A pattern is a substring, so `tgv` also matches `tgv-periodic`, and `--patterns="tgv*CPU"` keeps the CPU runs of `tgv`.
+- `--data_dir=<dir>` (default `data/benchmark`) with `--patterns="<p1> <p2>"` (space- or comma-separated, default: every case) reads the JSON files under `<dir>` whose path matches `*<pattern>*`. A pattern is a substring, so `tgv` also matches `tgv-periodic`, and `--patterns="tgv*CPU"` keeps the CPU runs of `tgv`.
 - JSON files as arguments, e.g. `julia --project compare.jl data/benchmark/*/tgv_*.json`.
 
 Files with identical tags are repetitions of one benchmark (`benchmark.sh -r`) and are merged into one row.
