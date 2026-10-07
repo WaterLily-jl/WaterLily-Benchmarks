@@ -6,6 +6,7 @@
 # Analyse stats of the main kernels for the main ranges (project! and conv_diff!)
 # ncu --set full --kernel-name gpu___kern__451 --launch-skip 10586 --launch-count 1 -o myreport julia --project=/home/b-fg/Documents/tudelft/documents/papers/journals/WaterLily.jl_CPC_2024/jl/WaterLilyBenchmarks.jl/profile --startup-file=no /home/b-fg/Documents/tudelft/documents/papers/journals/WaterLily.jl_CPC_2024/jl/WaterLilyBenchmarks.jl/profile/profile.jl --case=tgv --log2p=8 --backend=CuArray --max_steps=1000 --ftype=Float32 --run=1
 
+any(startswith("--backend="), ARGS) || push!(ARGS, "--backend=CuArray")  # NVIDIA by default (nsys, ncu): util.jl loads CUDA
 include("cases.jl")
 include("util.jl")
 use_plotting_env()  # CairoMakie lives in the plotting environment, see util.jl
@@ -25,7 +26,7 @@ if metaparse(arg_value("run")) == 1 # run profiling
     log2p = !isnothing(iarg("log2p")) ? arg_value("log2p") |> metaparse : log2p
     max_steps = !isnothing(iarg("max_steps")) ? arg_value("max_steps") |> metaparse : 1000
     ftype = !isnothing(iarg("ftype")) ? arg_value("ftype") |> metaparse : Float32
-    backend = !isnothing(iarg("backend")) ? arg_value("backend") |> x -> eval(Symbol(x)) : CuArray
+    backend = arg_value("backend") |> x -> eval(Symbol(x))
 
     sim = getf(case)(log2p, backend; T=ftype)
     run_profiling(sim, max_steps; remeasure=remeasure_case(case))

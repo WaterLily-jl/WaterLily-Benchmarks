@@ -1,10 +1,8 @@
-# Benchmark environment. The plotting packages are in plotting/Project.toml (see util.jl: use_plotting_env).
+# Benchmark environment. The plotting packages are in plotting/Project.toml (see util.jl: use_plotting_env), and GPU
+# backends run in gpu/CUDA or gpu/AMDGPU, a copy of this environment plus the GPU package made by benchmark.sh.
 [deps]
-AMDGPU = "21141c5a-9bdb-4563-92ae-f87d6854732e"
 BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
 BiotSavartBCs = "ec5a6caf-bdf7-41d0-b8e1-5fafde84e19f"
-CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
-GPUArrays = "0c68f7d7-f131-5f86-a1c3-88cf8149b2d7"
 Glob = "c27321d9-0574-5035-807b-f59d2c89b15c"
 JLD2 = "033835bb-8acc-5ee8-8aae-3f567f8a3819"
 KernelAbstractions = "63c18a36-062a-441e-b654-da1e3ab1ce7c"

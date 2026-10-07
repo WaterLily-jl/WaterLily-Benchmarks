@@ -88,27 +88,40 @@ git_checkout () {
 
 local_preferences () {
     if [[ $backend == "Array" && $thread == 1 ]]; then
-        printf "[WaterLily]\nbackend = \"SIMD\"\n" > LocalPreferences.toml
+        printf "[WaterLily]\nbackend = \"SIMD\"\n" > "$project/LocalPreferences.toml"
     else
-        printf "[WaterLily]\nbackend = \"KernelAbstractions\"\n" > LocalPreferences.toml
+        printf "[WaterLily]\nbackend = \"KernelAbstractions\"\n" > "$project/LocalPreferences.toml"
     fi
 }
 
 # Update project environment with new Julia version: Mark WaterLily as a development packag, then update dependencies and precompile.
+# A GPU backend runs in its own environment, gpu/<CUDA|AMDGPU>: a copy of this one plus the GPU package, resolved on its
+# own so that neither the CPU runs nor the other GPU vendor hold its versions back. It is made on its first run, and made
+# again when Project.toml changes (e.g. with -bs) or with -u true.
 update_environment () {
+    project=$THIS_DIR; local add=""
+    if [ "$backend" != "Array" ]; then
+        project="$THIS_DIR/gpu/${GPU_PKG[$backend]}"
+        if $UPDATE || [ ! -f "$project/Manifest.toml" ] || ! cmp -s "$THIS_DIR/Project.toml" "$project/Project.base.toml"; then
+            mkdir -p "$project" && rm -f "$project/Project.base.toml" && cp "$THIS_DIR/Project.toml" "$project/Project.toml"
+            add="Pkg.add(\"${GPU_PKG[$backend]}\");"
+        fi
+    fi
     local_preferences
-    if ! $UPDATE; then
+    if ! $UPDATE && [ -z "$add" ]; then
         return
     fi
-    echo "Updating environment to Julia $version and compiling WaterLily"
+    echo "Updating environment $project to Julia $version and compiling WaterLily"
+    local up=""; $UPDATE && up="Pkg.update();"
     # With -bs, [sources] already points at $BIOTSAVART_DIR, so Pkg.update resolves the local clone.
     # Pkg is loaded before activating: with --project, a Manifest from Julia <= 1.12 breaks `using Pkg` on 1.13.
-    full_args=(-e "using Pkg; Pkg.activate(\"$THIS_DIR\"); Pkg.develop(PackageSpec(path=get(ENV, \"WATERLILY_DIR\", \"\"))); Pkg.update();")
+    full_args=(-e "using Pkg; Pkg.activate(\"$project\"); Pkg.develop(PackageSpec(path=get(ENV, \"WATERLILY_DIR\", \"\"))); $add $up")
     julia_cmd || { echo "ERROR: updating the environment for WaterLily $wl_version on Julia $version failed." >&2; exit 1; }
+    [ -z "$add" ] || cp "$THIS_DIR/Project.toml" "$project/Project.base.toml"  # the Project.toml it was made from
 }
 
 run_benchmark () {
-    full_args=(--project=${THIS_DIR} --startup-file=no $args)
+    full_args=(--project=${project} --startup-file=no $args)
     echo "Running: julia ${full_args[@]}"
     julia_cmd || { echo "ERROR: the benchmark failed (WaterLily $wl_version, Julia $version, $backend, -t ${thread:-auto}), stopping the sweep." >&2; exit 1; }
 }
@@ -185,6 +198,7 @@ DATA_DIR="data/benchmark/"
 WL_VERSIONS=()
 BS_VERSIONS=()                                            # -bs: BiotSavartBCs versions, paired 1:1 with -w
 BACKENDS=('Array' 'CuArray')
+declare -A GPU_PKG=([CuArray]=CUDA [ROCArray]=AMDGPU)      # GPU backend -> its package (and gpu/ environment)
 THREADS=('4')
 UPDATE=false
 REPEATS=1                                                 # -r: repeat the whole sweep in new processes
@@ -276,6 +290,11 @@ if [[ " ${BACKENDS[*]} " =~ [[:space:]]'Array'[[:space:]] ]]; then
         exit 1
     fi
 fi
+
+# Assert the backends are known
+for b in "${BACKENDS[@]}"; do
+    [ "$b" == "Array" ] || [ -n "${GPU_PKG[$b]+x}" ] || { echo "ERROR: Invalid backend '$b' (expected Array, CuArray or ROCArray)" >&2; exit 1; }
+done
 
 # Assert "--repeats" is a positive integer
 if ! [[ "$REPEATS" =~ ^[1-9][0-9]*$ ]]; then

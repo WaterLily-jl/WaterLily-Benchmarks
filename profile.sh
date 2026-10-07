@@ -26,26 +26,32 @@ waterlily_profile_branch () {
     julia --project -e "using Pkg; Pkg.update();"
     cd $THIS_DIR
 }
-## Update environment
+## Update environment. A GPU backend runs in gpu/<CUDA|AMDGPU>, a copy of this environment plus the GPU package (see benchmark.sh)
 update_environment () {
-    echo "Updating environment to Julia $version"
-    julia --project=$THIS_DIR -e "using Pkg; Pkg.develop(PackageSpec(path=get(ENV, \"WATERLILY_DIR\", \"\"))); Pkg.update();"
+    echo "Updating environment $PROJECT to Julia $version"
+    local add=""
+    if [ "$PROJECT" != "$THIS_DIR" ]; then
+        mkdir -p "$PROJECT" && rm -f "$PROJECT/Project.base.toml" && cp "$THIS_DIR/Project.toml" "$PROJECT/Project.toml"
+        add="Pkg.add(\"$(basename "$PROJECT")\");"
+    fi
+    julia -e "using Pkg; Pkg.activate(\"$PROJECT\"); Pkg.develop(PackageSpec(path=get(ENV, \"WATERLILY_DIR\", \"\"))); $add Pkg.update();" &&
+        { [ -z "$add" ] || cp "$THIS_DIR/Project.toml" "$PROJECT/Project.base.toml"; }
 }
 ## Run profiling nsys
 run_profiling_nsys () {
-    full_args=(--project=${THIS_DIR} --startup-file=no $args)
+    full_args=(--project=${PROJECT} --startup-file=no $args)
     echo "Running NSYS profiling: nsys profile --sample=none --trace=nvtx,cuda --output=$DATA_DIR/$case/$case.nsys-rep --export=sqlite --force-overwrite=true julia ${full_args[@]}"
     nsys profile --sample=none --trace=nvtx,cuda --output=$DATA_DIR/$case/$case.nsys-rep --export=sqlite --force-overwrite=true julia "${full_args[@]}"
 }
 ## Run postprocessing
 run_postprocessing_nsys () {
-    full_args=(--project=${THIS_DIR} --startup-file=no $args)
+    full_args=(--project=${PROJECT} --startup-file=no $args)
     echo "Running postprocessing: julia ${full_args[@]}"
     julia "${full_args[@]}"
 }
 ## Run profiling ncu
 run_profiling_ncu () {
-    full_args=(--project=${THIS_DIR} --startup-file=no $args)
+    full_args=(--project=${PROJECT} --startup-file=no $args)
     echo "Running NCU profiling: ncu --set full --kernel-name regex:$kernels_reg --launch-skip 100 --launch-count 100 -o $DATA_DIR/$case/$kernels_o-p$pp -f julia ${full_args[@]}"
     ncu --set full --kernel-name regex:$kernels_reg --launch-skip 100 --launch-count 100 -o $DATA_DIR/$case/$kernels_o-p$pp -f julia ${full_args[@]}
 }
@@ -198,6 +204,13 @@ fi
 
 ## Checkout to WaterLily profiling branch and update it
 waterlily_profile_branch
+
+## Environment of the backend (see update_environment)
+case "$BACKEND" in
+    CuArray) PROJECT="$THIS_DIR/gpu/CUDA" ;;
+    ROCArray) PROJECT="$THIS_DIR/gpu/AMDGPU" ;;
+    *) PROJECT="$THIS_DIR" ;;
+esac
 
 ## Display information
 display_info
