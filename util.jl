@@ -79,11 +79,13 @@ function add_to_suite!(suite, sim_function; case="", p=(3,4,5), s=100, ft=Float3
 end
 
 waterlily_dir = get(ENV, "WATERLILY_DIR", "")
-git_hash = read(`git -C $waterlily_dir rev-parse --short HEAD`, String) |> x -> strip(x, '\n')
-# Name of the git ref at `hash` (or `hash` if none). Refs can share a commit, so the pick is fixed: local
-# branches, then tags, then remote branches, never `HEAD`, and master/main win a tie.
-function find_git_ref(hash)
-    refs = [split(r, ' ') for r in split(read(`git -C $waterlily_dir show-ref -d`, String), '\n') if !isempty(r)]
+biotsavart_dir = get(ENV, "BIOTSAVART_DIR", "")  # names the BiotSavartBCs refs of -bs runs in compare.jl
+short_hash(dir) = read(`git -C $dir rev-parse --short HEAD`, String) |> x -> strip(x, '\n')
+git_hash = short_hash(waterlily_dir)
+# Name of the git ref at `hash` in the repository `dir` (or `hash` if none). Refs can share a commit, so the pick
+# is fixed: local branches, then tags, then remote branches, never `HEAD`, and master/main win a tie.
+function find_git_ref(hash; dir=waterlily_dir)
+    refs = [split(r, ' ') for r in split(read(`git -C $dir show-ref -d`, String), '\n') if !isempty(r)]
     for prefix in ("refs/heads/", "refs/tags/", "refs/remotes/")
         names = [split(ref[length(prefix)+1:end], '^')[1] for (h, ref) in refs
                  if startswith(h, hash) && startswith(ref, prefix) && !endswith(ref, "/HEAD")]
@@ -93,8 +95,22 @@ function find_git_ref(hash)
     end
     return hash
 end
-find_git_hash(ref) = read(`git -C $waterlily_dir rev-parse --short $ref`, String) |> x -> strip(x, '\n')
 is_git_hash(hash) = find_git_ref(hash) == hash
+# A -bs run is tagged `<WaterLily hash>+bs<BiotSavartBCs hash>` (benchmark.jl), any other run `<WaterLily hash>`
+split_hash(tag) = (h = split(tag, "+bs"; limit=2); (String(h[1]), length(h) == 2 ? String(h[2]) : nothing))
+find_bs_ref(hash) = ispath(joinpath(biotsavart_dir, ".git")) ? find_git_ref(hash; dir=biotsavart_dir) : hash
+# WaterLily column of a run: the WaterLily ref, and for a -bs run the BiotSavartBCs ref, e.g. "master (bs main)"
+function run_ref(tag)
+    wl, bs = split_hash(tag)
+    return isnothing(bs) ? String(find_git_ref(wl)) : "$(find_git_ref(wl)) (bs $(find_bs_ref(bs)))"
+end
+# Hashes of a run and the names of their refs, which the --speedup_base values of compare.jl match
+function run_hashes(tag)
+    wl, bs = split_hash(tag)
+    hashes = [wl, find_git_ref(wl)]
+    isnothing(bs) || push!(hashes, bs, find_bs_ref(bs))
+    return String.(hashes)
+end
 hostname = gethostname()
 
 backend_str = Dict(Array => "CPUx"*@sprintf("%.2d", Threads.nthreads()))
