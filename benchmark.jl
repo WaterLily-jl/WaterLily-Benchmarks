@@ -29,7 +29,7 @@ function run_benchmarks(cases, log2p, max_steps, ftype, backend, bstr; data_dir=
     for (case, p, s, ft) in zip(cases, log2p, max_steps, ftype)
         println("Benchmarking: $(case)  ($(N_RUNS) runs × $(s) steps)")
         suite = BenchmarkGroup()
-        results = BenchmarkGroup([case, "sim_step!", p, s, ft, bstr, git_hash, string(VERSION)])
+        results = BenchmarkGroup([case, "sim_step!", p, s, ft, bstr, run_hash, string(VERSION)])
         resets = []                  # per-size (sim, fname, dir) to reset before each run
         allocs = Dict{String,Int}()  # per-size block-averaged allocations per step
         add_to_suite!(suite, getf(case); case=case, p=p, s=s, ft=ft, backend=backend, bstr=bstr,
@@ -37,7 +37,7 @@ function run_benchmarks(cases, log2p, max_steps, ftype, backend, bstr; data_dir=
         ) # create benchmark
         GC.gc()
         results[bstr] = collect_runs!(suite[bstr], s, resets, allocs) # run!
-        fname = "$(case)_$(p...)_$(s)_$(ft)_$(bstr)_$(git_hash)_$(VERSION)$(rep).json"
+        fname = "$(case)_$(p...)_$(s)_$(ft)_$(bstr)_$(run_hash)_$(VERSION)$(rep).json"
         BenchmarkTools.save(joinpath(data_dir,fname), results)
     end
 end
@@ -53,7 +53,12 @@ developed = isnothing(_devi) ? "checkpoints" : split(ARGS[_devi], "="; limit=2)[
 _repi = findfirst(a -> startswith(a, "--rep="), ARGS)
 rep = isnothing(_repi) ? "" : "_r" * split(ARGS[_repi], "="; limit=2)[2]
 
+# With -bs, benchmark.sh points BiotSavartBCs at a local clone: its commit joins the WaterLily one in the tags,
+# file names and data directory, so that runs which differ only in BiotSavartBCs stay apart (split_hash in util.jl)
+bs_dir = pkgdir(BiotSavartBCs)
+run_hash = ispath(joinpath(bs_dir, ".git")) ? "$(git_hash)+bs$(short_hash(bs_dir))" : git_hash
+
 # Generate benchmark data
-data_dir = joinpath(data_dir, hostname * "_" * git_hash)
+data_dir = joinpath(data_dir, hostname * "_" * run_hash)
 mkpath(data_dir)
 run_benchmarks(cases, log2p, max_steps, ftype, backend, backend_str[backend]; data_dir, developed, rep)

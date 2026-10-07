@@ -96,12 +96,12 @@ for (i, case) in enumerate(cases)
     benchmarks = benchmarks_all_dict[case]
     if !isnothing(speedup_base)
         speedup_base_idx = findfirst(
-            x->length(intersect([x.tags...,find_git_ref(x.tags[end-1])],speedup_base))==length(speedup_base), benchmarks
+            x->length(intersect([x.tags...,run_tokens(x.tags[end-1])...],speedup_base))==length(speedup_base), benchmarks
         )
         if isnothing(speedup_base_idx)
-            available = unique([(b.tags[end-2], String(find_git_ref(b.tags[end-1])), b.tags[end], b.tags[end-3]) for b in benchmarks])
+            available = unique([(b.tags[end-2], run_ref(b.tags[end-1]), b.tags[end], b.tags[end-3]) for b in benchmarks])
             avail_str = join(["  - Backend=$(t[1]), WaterLily=$(t[2]), Julia=$(t[3]), FP=$(t[4])" for t in available], "\n")
-            missing_tokens = setdiff(speedup_base, reduce(vcat, [[t[1], t[2], t[3], t[4]] for t in available]; init=String[]))
+            missing_tokens = setdiff(speedup_base, reduce(vcat, [[b.tags[end-2], b.tags[end], b.tags[end-3], run_tokens(b.tags[end-1])...] for b in benchmarks]; init=String[]))
             error("Cannot find base speedup for '$case' matching tokens $(speedup_base).\n" *
                   "Available (Backend, WaterLily ref, Julia, FP) for '$case':\n" *
                   "$avail_str\n" *
@@ -153,7 +153,7 @@ for (i, case) in enumerate(cases)
             cost = reference / N  # per-step ns
             imin = argmin(datap.times)
             gc_pct = datap.gctimes[imin] / datap.times[imin] * 100.0
-            waterlily_ref = String(find_git_ref(benchmark.tags[end-1]))
+            waterlily_ref = run_ref(benchmark.tags[end-1])
             row = ("Backend"=>backends_str[i], "WaterLily"=>waterlily_ref, "Julia"=>benchmark.tags[end], "FP"=>benchmark.tags[end-3],
                 "Alloc"=>datap.allocs / 1000, "GC"=>gc_pct, "Mean"=>reference / 1e6, "Median"=>median_step / 1e6,
                 "Cost"=>cost, "Speedup"=>speedup, "Noise"=>noise_pct, "Δ ± σ"=>NaN, "Signif"=>NaN, "Reps"=>repetitions[benchmark], "σ"=>NaN, "Single"=>false)
@@ -174,23 +174,13 @@ for (i, case) in enumerate(cases)
                 data[i, col("Single")] = data[i, col("Reps")] == 1 || data[ref_idx, col("Reps")] == 1
             end
         end
-        sorted_cond, sorted_idx = 0 < sort_idx <= length(header_top), nothing
-        if sorted_cond
-            sorted_idx = sortperm(data[:, sort_idx])
-            data .= data[sorted_idx, :]
-        else
-            data = sortslices(data,dims=1,by=x->(x[col("Backend")],x[col("WaterLily")]))
-            if !isnothing(speedup_base)
-                speedup_base_idx2 = findfirst(
-                    x->length(intersect([x[col("Backend")],x[col("WaterLily")],x[col("Julia")],find_git_hash(x[col("WaterLily")])],speedup_base)) == length(speedup_base), eachrow(data)
-                )
-                isnothing(speedup_base_idx2) && throw(error("Cannot find base speedup for $case."))
-            else
-                speedup_base_idx2 = 1
-            end
-        end
+        # Rows sorted by --sort, else by backend and WaterLily; the baseline row is followed through the sort
+        sorted_idx = 0 < sort_idx <= length(header_top) ? sortperm(data[:, sort_idx]) :
+                     sortperm(collect(zip(data[:, col("Backend")], data[:, col("WaterLily")])))
+        data .= data[sorted_idx, :]
+        base_row = findfirst(==(speedup_base_idx), sorted_idx)
         # Highlight the speedup baseline row (blue, bold in markdown) and the fastest row of each backend (green, italic)
-        is_base = (data, i, j) -> sorted_cond ? i == findfirst(x->x==speedup_base_idx, sorted_idx) : i==speedup_base_idx2
+        is_base = (data, i, j) -> i == base_row
         is_fastest = Function[]
         for bkend in unique(backends_str)
             idxs = findall(x->x[col("Backend")]==bkend,eachrow(data))

@@ -110,6 +110,7 @@ runs:
       working-directory: ${{ inputs.harness-path }}
       env:
         WATERLILY_DIR: ${{ inputs.waterlily-dir }}
+        BIOTSAVART_DIR: ${{ github.workspace }}/BiotSavartBCs.jl  # names the BiotSavartBCs refs of a -bs run
         BASE: ${{ inputs.base }}
         HEAD: ${{ inputs.head }}
         LABEL: ${{ inputs.label }}
