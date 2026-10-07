@@ -19,7 +19,7 @@ function sphere(p, backend; Re=3700, U=1, T=Float32, biot=false)
     L = (16D, 6D, 6D)
     center = @SVector T[1.5D, 3D, 3D]; radius = T(D/2)
     body = AutoBody((x,t) -> √sum(abs2, x .- center) - radius)
-    biot && return BiotSimulation(L, (U, 0, 0), D; U, ν, body, T, mem=backend) # Biot-Savart open boundaries (BiotSavartBCs.jl)
+    biot && return BiotSimulation(L, (U, 0, 0), D; U, ν, body, T, mem=backend) # Biot-Savart open boundaries
     Simulation(L, (U, 0, 0), D; U, ν, body, T, mem=backend, exitBC=true)
 end
 sphere_biotsavart(p, backend; kwargs...) = sphere(p, backend; biot=true, kwargs...)
