@@ -1,4 +1,4 @@
-# Run profiling with (eg): nsys profile -o "./data/tgv/tgv.nsys-rep" --force-overwrite=true --export=sqlite julia --project profile.jl --case="tgv" --log2p=8 --run=1
+# Run profiling with (eg): nsys profile -o "./data/tgv/tgv.nsys-rep" --force-overwrite=true --export=sqlite julia --project src/profile.jl --case="tgv" --log2p=8 --run=1
 # Analyse as (eg): nsys stats -r nvtx_gpu_proj_sum "./data/tgv/tgv.sqlite"
 # Profiling results is stored in data/. Data not included in the repository because it weights 1GB approximately, but it is available upon request.
 # WaterLily#profiling branch must be used for traces.
@@ -92,7 +92,7 @@ else # postprocess profiling
             pc = kernel_weighted_time[i]/sum(kernel_weighted_time)*100
             pc > 1.9 && Makie.text!(x, y, text=@sprintf("%.0f", pc), color=:white, align=(:center, :center))
         end
-        fig_path = joinpath(string(@__DIR__), plot_dir, "$(case)_profiling.pdf")
+        fig_path = joinpath(dirname(@__DIR__), plot_dir, "$(case)_profiling.pdf")
         save(fig_path, fig)
         println("Figure stored in $(fig_path)")
     end

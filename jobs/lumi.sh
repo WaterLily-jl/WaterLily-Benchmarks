@@ -11,6 +11,8 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --time=03:00:00
 
+# Submit from the repository root (benchmark.sh is called from the working directory): sbatch jobs/lumi.sh
+
 module use /appl/local/csc/modulefiles
 module load julia
 export WATERLILY_DIR="/users/fontbern/WaterLily.jl"

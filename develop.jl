@@ -1,7 +1,7 @@
-include("cases.jl")
-include("util.jl")
+include("src/cases.jl")
+include("src/util.jl")
 
-# Advance each case to a developed flow (`develop_time` in util.jl) and save a JLD2 checkpoint, so that
+# Advance each case to a developed flow (`develop_time` in src/util.jl) and save a JLD2 checkpoint, so that
 # benchmarks skip the startup transient. `save!` stores host arrays, so a checkpoint loads on any backend.
 # Checkpoints live in `checkpoints/` (git-LFS).
 function develop_checkpoints(cases, log2p, ftype, backend, bstr; dir="checkpoints/")

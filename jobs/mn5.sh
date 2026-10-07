@@ -10,6 +10,8 @@
 #SBATCH --gres=gpu:1
 #SBATCH --time=48:00:00
 
+# Submit from the repository root (benchmark.sh is called from the working directory): sbatch jobs/mn5.sh
+
 export JULIA_DEPOT_PATH="$HOME/.julia-acc"
 
 sh benchmark.sh -b "Array CuArray" \

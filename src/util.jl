@@ -118,14 +118,14 @@ backend_str = Dict(Array => "CPUx"*@sprintf("%.2d", Threads.nthreads()))
 backend_arg = isnothing(iarg("--backend=", ARGS)) ? "Array" : arg_value("--backend=", ARGS)
 gpu_pkg = Dict("CuArray" => "CUDA", "ROCArray" => "AMDGPU")
 haskey(gpu_pkg, backend_arg) && isnothing(Base.find_package(gpu_pkg[backend_arg])) && error("--backend=$(backend_arg) needs " *
-    "$(gpu_pkg[backend_arg]): run with --project=$(joinpath(@__DIR__, "gpu", gpu_pkg[backend_arg])) (made by benchmark.sh)")
+    "$(gpu_pkg[backend_arg]): run with --project=$(joinpath(dirname(@__DIR__), "gpu", gpu_pkg[backend_arg])) (made by benchmark.sh)")
 backend_arg == "CuArray" && (using CUDA: CuArray, allowscalar; backend_str[CuArray] = "GPU-NVIDIA"; allowscalar(false))
 backend_arg == "ROCArray" && (using AMDGPU: ROCArray, allowscalar; backend_str[ROCArray] = "GPU-AMD"; allowscalar(false))
 
 # Plotting packages (Plots, Makie, ...) live in their own environment, plotting/, so that benchmarking (and CI) never
 # installs them. Scripts that plot stack it on the load path with this, before `using` them.
 function use_plotting_env()
-    env = joinpath(@__DIR__, "plotting")
+    env = joinpath(dirname(@__DIR__), "plotting")
     any(f -> startswith(f, "Manifest") && endswith(f, ".toml"), readdir(env)) || error(
         "The plotting environment $(env) is not instantiated. Run once: julia --project=$(env) -e 'using Pkg; Pkg.instantiate()'")
     env in LOAD_PATH || push!(LOAD_PATH, env)

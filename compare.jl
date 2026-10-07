@@ -4,7 +4,7 @@
 # julia --project compare.jl --data_dir="data/benchmark" --plot_dir="plots" --patterns=\["tgv","sphere","cylinder"\] --speedup_base="CPUx01" --sort=Speedup
 
 using BenchmarkTools, PrettyTables, Statistics
-include("util.jl")
+include("src/util.jl")
 
 # Parse CLA and load benchmarks
 speedup_base = !isnothing(iarg("speedup_base", ARGS)) ? arg_value("speedup_base", ARGS) |> parsestringlist : nothing
@@ -18,9 +18,9 @@ show_gc = !isnothing(iarg("--gc", ARGS)) && !(arg_value("--gc", ARGS) in ("0", "
 markdown = !isnothing(iarg("--markdown", ARGS)) && !(arg_value("--markdown", ARGS) in ("0", "false")) # tables as GitHub markdown
 benchmarks_list = nothing
 !isnothing(plot_dir) &&  mkpath(plot_dir)
-if !isnothing(plot_dir)  # the plotting packages live in their own environment, see util.jl
+if !isnothing(plot_dir)  # the plotting packages live in their own environment, see src/util.jl
     use_plotting_env()
-    include("plotting.jl")
+    include("src/plotting.jl")
 end
 if isnothing(iarg("data_dir", ARGS)) && any(split(x, '.')[end] == "json" for x in ARGS)  # passed json files directly
     benchmarks_list = [f for f in ARGS if endswith(f, ".json")]

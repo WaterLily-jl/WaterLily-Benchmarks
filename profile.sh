@@ -99,7 +99,7 @@ LOG2P=() # ('8' '5' '6')
 MAXSTEPS='1000'
 FTYPE='Float32'
 RUN='0'
-FILE='profile.jl'
+FILE='src/profile.jl'
 
 ## Parse arguments
 while [ $# -gt 0 ]; do
