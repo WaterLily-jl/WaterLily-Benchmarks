@@ -113,18 +113,14 @@ function run_hashes(tag)
 end
 hostname = gethostname()
 
+# A GPU --backend loads its package (CUDA, AMDGPU) from the environment benchmark.sh makes for it, gpu/CUDA or gpu/AMDGPU
 backend_str = Dict(Array => "CPUx"*@sprintf("%.2d", Threads.nthreads()))
-check_compiler(compiler, parse_str) = try occursin(parse_str, read(`$compiler --version`, String)) catch _ false end
-check_smi(smi, parse_str) = try occursin(parse_str, read(`$smi`, String)) catch _ false end
-_cuda_compiler = check_compiler("nvcc","release")
-_cuda_smi = check_smi("nvidia-smi","NVIDIA-SMI")
-_rocm_compiler = check_compiler("hipcc","version")
-_rocm_smi = check_smi("rocm-smi","ROCM-SMI")
-_cuda = _cuda_compiler || _cuda_smi
-_rocm = _rocm_compiler || _rocm_smi
-_cuda && (using CUDA: CuArray; backend_str[CuArray] = "GPU-NVIDIA")
-_rocm && (using AMDGPU: ROCArray; backend_str[ROCArray] = "GPU-AMD")
-(_cuda || _rocm) && (using GPUArrays: allowscalar; allowscalar(false))
+backend_arg = isnothing(iarg("--backend=", ARGS)) ? "Array" : arg_value("--backend=", ARGS)
+gpu_pkg = Dict("CuArray" => "CUDA", "ROCArray" => "AMDGPU")
+haskey(gpu_pkg, backend_arg) && isnothing(Base.find_package(gpu_pkg[backend_arg])) && error("--backend=$(backend_arg) needs " *
+    "$(gpu_pkg[backend_arg]): run with --project=$(joinpath(@__DIR__, "gpu", gpu_pkg[backend_arg])) (made by benchmark.sh)")
+backend_arg == "CuArray" && (using CUDA: CuArray, allowscalar; backend_str[CuArray] = "GPU-NVIDIA"; allowscalar(false))
+backend_arg == "ROCArray" && (using AMDGPU: ROCArray, allowscalar; backend_str[ROCArray] = "GPU-AMD"; allowscalar(false))
 
 # Plotting packages (Plots, Makie, ...) live in their own environment, plotting/, so that benchmarking (and CI) never
 # installs them. Scripts that plot stack it on the load path with this, before `using` them.

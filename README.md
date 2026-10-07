@@ -47,6 +47,7 @@ The accepted command line arguments are (parenthesis for short version):
     ```sh
     julia --project=plotting -e 'using Pkg; Pkg.instantiate()'
     ```
+ - GPU environments. CUDA and AMDGPU are not in [Project.toml](./Project.toml), so CPU runs (and CI) never install them. A `CuArray` or `ROCArray` backend runs in `gpu/CUDA` or `gpu/AMDGPU` (gitignored): a copy of [Project.toml](./Project.toml) plus the GPU package, resolved on its own so that neither the CPU environment nor the other GPU vendor holds its versions back. [benchmark.sh](./benchmark.sh) makes it on the first run of that backend, and again when `Project.toml` changes (e.g. with `-bs`) or with `-u true`. To run another script on a GPU, use that environment, e.g. `julia --project=gpu/CUDA develop.jl --backend=CuArray`.
 
 The following command
 ```sh

@@ -8,3 +8,4 @@ Manifest.toml
 LocalPreferences.toml
 **data*/
 **/plots*/
+gpu/
