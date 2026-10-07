@@ -83,6 +83,8 @@ runs:
         version: ${{ inputs.julia-version }}
 
     - uses: julia-actions/cache@v3
+      with:  # its cleanup of older caches cannot find its script from inside a composite action (GITHUB_ACTION_PATH is ours)
+        delete-old-caches: false
 
     - name: Benchmark ${{ inputs.base }} and ${{ inputs.head }}
       id: benchmark
