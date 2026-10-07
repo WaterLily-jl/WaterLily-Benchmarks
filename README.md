@@ -78,7 +78,7 @@ The `--speedup_base="<backend>,<waterlily hash/ref>,<julia version>"` argument (
 |---|---|---|
 | `waterlily-dir` | the workspace | WaterLily.jl checkout containing `base` and `head` |
 | `base`, `head` | `master`, (required) | refs to compare, e.g. `head: pr-123` |
-| `args` | `-b Array -t "1 2" -r 2` | [benchmark.sh](./benchmark.sh) arguments, restricted to `[A-Za-z0-9 ,._="-]`. With `-bs`, BiotSavartBCs.jl is checked out next to WaterLily, so its refs must exist on GitHub, e.g. `-bs "main face-loops"` |
+| `args` | `-b Array -t "1 2" -r 2` | [benchmark.sh](./benchmark.sh) arguments, restricted to `[A-Za-z0-9 ,._="-]`. With `-bs`, BiotSavartBCs.jl is checked out next to WaterLily |
 | `force` | `true` | pass `-f` (skip the machine check), for shared runners |
 | `julia-version` | `1.11` | for `julia-actions/setup-julia` |
 | `harness-ref`, `harness-path` | the action's ref, `WaterLily-Benchmarks` | revision of this repository to run, and its checkout path |
