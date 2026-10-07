@@ -22,4 +22,4 @@ The raw data of studies reported in issues, pull requests or papers are kept in 
 WATERLILY_DIR=<WaterLily.jl clone> julia --project compare.jl --data_dir=<study>/data --speedup_base="CPUx01,master"
 ```
 
-Use the WaterLily-Benchmarks commit given in the study's README to get the same tables.
+Use the WaterLily-Benchmarks commit given in the study's README to get the same tables. The data directories that `benchmark.sh` writes already hold the Manifests of their runs and `environments.toml` (see [Output](@ref)), so a study can keep them as they are.
