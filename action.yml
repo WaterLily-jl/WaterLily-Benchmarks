@@ -138,6 +138,8 @@ runs:
         done
         versions="WaterLily $(vs "${commits[@]}")${bs:+, BiotSavartBCs $(vs "${bs_commits[@]}")}"
         baseline=$(hash "$WATERLILY_DIR" "${wl[0]}")${bs:+,$(hash "$BIOTSAVART_DIR" "${bs[0]}")}
+        # benchmark.sh -bs restores the environment on exit, which removes the Manifest when there was none before (none is committed)
+        [[ -f Manifest.toml ]] || JULIA_PKG_PRECOMPILE_AUTO=0 julia --project -e 'using Pkg; Pkg.instantiate()'
         julia --project compare.jl --data_dir=data/ci --markdown --speedup_base="$baseline" > tables.md
         {
           echo "<!-- waterlily-benchmarks${LABEL:+:$LABEL} -->"
@@ -163,7 +165,7 @@ runs:
         echo "data=$PWD/data/ci" >> "$GITHUB_OUTPUT"
 
     - name: Upload the results
-      if: inputs.artifact != ''
+      if: ${{ !cancelled() && inputs.artifact != '' }}  # also when the benchmark or the report failed, to keep what was measured
       uses: actions/upload-artifact@v7
       with:
         name: ${{ inputs.artifact }}
