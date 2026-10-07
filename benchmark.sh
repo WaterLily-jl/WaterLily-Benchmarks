@@ -97,7 +97,8 @@ local_preferences () {
 # Update project environment with new Julia version: Mark WaterLily as a development packag, then update dependencies and precompile.
 # A GPU backend runs in its own environment, gpu/<CUDA|AMDGPU>: a copy of this one plus the GPU package, resolved on its
 # own so that neither the CPU runs nor the other GPU vendor hold its versions back. It is made on its first run, and made
-# again when Project.toml changes (e.g. with -bs) or with -u true.
+# again when Project.toml changes (e.g. with -bs) or with -u true. An environment without a Manifest.toml (a new clone) is
+# installed on its first run, as with -u true but without updating the packages.
 update_environment () {
     project=$THIS_DIR; local add=""
     if [ "$backend" != "Array" ]; then
@@ -108,7 +109,7 @@ update_environment () {
         fi
     fi
     local_preferences
-    if ! $UPDATE && [ -z "$add" ]; then
+    if ! $UPDATE && [ -z "$add" ] && [ -f "$project/Manifest.toml" ]; then
         return
     fi
     echo "Updating environment $project to Julia $version and compiling WaterLily"
