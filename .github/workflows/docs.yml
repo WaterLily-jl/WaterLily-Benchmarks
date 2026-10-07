@@ -1,0 +1,37 @@
+name: Documentation
+
+# Builds the documentation (docs/make.jl, DocumenterVitepress) and deploys it to gh-pages: main to dev/, a pull request
+# from a branch of this repository to previews/PR<number>. The site is https://waterlily-jl.github.io/WaterLily-Benchmarks/
+on:
+  push:
+    branches: [main]
+    paths: ['docs/**', 'checkpoints/viz/**', '.github/workflows/docs.yml']
+  pull_request:
+    paths: ['docs/**', 'checkpoints/viz/**', '.github/workflows/docs.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write  # push to gh-pages
+  statuses: write  # link the deployment from the commit
+  actions: write   # julia-actions/cache deletes its older caches
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false  # Documenter pushes with GITHUB_TOKEN
+      - uses: julia-actions/setup-julia@v3
+        with:
+          version: '1.11'  # as the benchmark action
+      - uses: julia-actions/cache@v3
+      - uses: julia-actions/julia-docdeploy@v1
+        with:
+          install-package: false  # this repository is not a package
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
