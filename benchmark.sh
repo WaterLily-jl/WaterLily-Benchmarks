@@ -193,7 +193,7 @@ DEVELOPED="checkpoints"                                   # -dev <dir>: develope
 # Default sweep (run when -c is omitted) and per-case defaults for omitted -p/-s/-ft.
 CASES=('tgv' 'jelly-biotsavart')
 LOG2P=(); MAXSTEPS=(); FTYPE=()                            # provided -p/-s/-ft (empty => default)
-declare -A DEF_LOG2P=([tgv]=6,7 [tgv-periodic]=6,7 [jelly-biotsavart]=5,6 [sphere]=3,4 [sphere-biotsavart]=3,4 [cylinder]=4,5)  # default size per case; add cases here
+declare -A DEF_LOG2P=([tgv]=6,7 [tgv-periodic]=6,7 [jelly-biotsavart]=5,6 [sphere]=3,4 [sphere-biotsavart]=3,4 [cylinder]=4,5)  # default size per case; add cases here and to checkpoint_log2p in util.jl
 DEF_MAXSTEPS=25; DEF_FTYPE=Float32                         # default steps/type (uniform)
 
 # Parse arguments

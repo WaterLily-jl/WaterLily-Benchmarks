@@ -151,3 +151,16 @@ develop_time = Dict(
     "tgv" => 10.0, "tgv-periodic" => 10.0, "sphere" => 100.0, "sphere-biotsavart" => 100.0, "cylinder" => 100.0,
     "donut" => 100.0, "jelly-biotsavart" => 10*Float64(π),
 )
+
+# Sizes of the developed-flow checkpoints: the DEF_LOG2P defaults of benchmark.sh, plus donut
+checkpoint_log2p = Dict(
+    "tgv" => (6,7), "tgv-periodic" => (6,7), "sphere" => (3,4), "sphere-biotsavart" => (3,4), "cylinder" => (4,5),
+    "donut" => (5,6), "jelly-biotsavart" => (5,6),
+)
+
+# CLA of develop.jl and visualize.jl: all cases at their checkpoint sizes in Float32, unless ARGS say otherwise
+function parse_checkpoint_cla(args)
+    cases = parse_cla(args; cases=all_cases)[1]
+    return parse_cla(args; cases, log2p=[checkpoint_log2p[c] for c in cases], ftype=fill(Float32, length(cases)),
+                     backend=Array, data_dir="checkpoints/")
+end
