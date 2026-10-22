@@ -68,4 +68,11 @@ Each process writes one JSON file per case into `<data_dir>/<hostname>_<WaterLil
 <case>_<log2p>_<max_steps>_<ftype>_<backend>_<WaterLily hash>_<Julia version>[_r<n>].json
 ```
 
-where `<log2p>` joins the sizes, e.g. `tgv_67_25_Float32_CPUx04_50cb584_1.11.5.json` for `log2p = 6,7`. A run with `-bs` uses `<WaterLily hash>+bs<BiotSavartBCs hash>` instead of the WaterLily hash. The files hold `BenchmarkTools` results whose tags describe the run, and `compare.jl` reads the tags, not the file names, so renaming a file is safe.
+where `<log2p>` joins the sizes, e.g. `tgv_67_25_Float32_CPUx04_50cb584_1.11.5.json` for `log2p = 6,7`. A run with `-bs` uses `<WaterLily hash>+bs<BiotSavartBCs hash>` instead of the WaterLily hash. The files hold `BenchmarkTools` results whose tags describe the run, and `compare.jl` reads the tags, not the file names, so renaming a file is safe for `compare.jl` (but see `environments.toml` below).
+
+Each data directory also keeps the environment of its runs, so that they can be reproduced:
+
+- `Manifest-<Julia version>-<environment>-<hash>.toml`: the resolved `Manifest.toml` of the run's environment (`cpu`, or `CUDA` and `AMDGPU` for the [GPU environments](environments.md)), one file per distinct Manifest. A package developed from a local clone, WaterLily from `$WATERLILY_DIR` or BiotSavartBCs with `-bs`, gets `path = "<package>.jl"` instead of the path on the machine, and the commit it ran from as `clone-commit` (with `clone-changes = true` if the clone had uncommitted changes). So the Manifest says which code ran, without paths of the machine it ran on.
+- `environments.toml`: for each JSON file, its Manifest and the WaterLily preferences of the run (`LocalPreferences.toml`, the SIMD or KernelAbstractions backend).
+
+Two sweeps writing into the same data directory at the same time can lose entries of `environments.toml`; sweeps run one after the other are fine.

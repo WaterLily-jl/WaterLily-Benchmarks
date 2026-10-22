@@ -39,6 +39,7 @@ function run_benchmarks(cases, log2p, max_steps, ftype, backend, bstr; data_dir=
         results[bstr] = collect_runs!(suite[bstr], s, resets, allocs) # run!
         fname = "$(case)_$(p...)_$(s)_$(ft)_$(bstr)_$(run_hash)_$(VERSION)$(rep).json"
         BenchmarkTools.save(joinpath(data_dir,fname), results)
+        save_environment(data_dir, fname)  # its Manifest and preferences, see util.jl
     end
 end
 
