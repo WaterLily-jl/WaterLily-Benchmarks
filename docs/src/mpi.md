@@ -1,0 +1,74 @@
+# MPI scaling
+
+[`mpi/`](https://github.com/WaterLily-jl/WaterLily-Benchmarks/tree/main/mpi) benchmarks the MPI extension of WaterLily (branch [`mpi-igg`](https://github.com/WaterLily-jl/WaterLily.jl/pull/281), on top of [ImplicitGlobalGrid.jl](https://github.com/eth-cscs/ImplicitGlobalGrid.jl)) on CPUs and GPUs: strong and weak scaling, and correctness checks against a run without MPI. It is separate from `benchmark.sh`: each run is one MPI launch of `mpi/scaling.jl`, which prints one line per run instead of writing JSON files.
+
+| File | What it does |
+|---|---|
+| `mpi/setup.jl` | builds the `mpi/` environment: WaterLily from `$WATERLILY_DIR`, MPI.jl bound to the system MPI, the WaterLily backend |
+| `mpi/scaling.jl` | times `sim_step!` of a case on every rank and prints the time per step; `--check` also records global diagnostics |
+| `mpi/check.jl` | compares the diagnostics of several runs with a reference run |
+| `mpi/plot_strong.jl`, `mpi/plot_weak.jl` | plot the scaling curves from the job outputs (with the `plotting` environment) |
+| `mpi/jobs/` | the environment and job scripts of each cluster (`jupiter_*`, `snellius_*`) and `submit.sh` |
+
+## Setup
+
+On a login node (it needs internet), with a WaterLily.jl clone on branch `mpi-igg`:
+
+```sh
+source mpi/jobs/jupiter_env.sh          # the modules of the jobs, and WATERLILY_DIR
+julia mpi/setup.jl --cuda-local         # GPUs: KernelAbstractions backend, CUDA.jl on the CUDA module
+```
+
+On a CPU cluster use `julia mpi/setup.jl --backend=SIMD` (one thread per rank). `setup.jl` binds MPI.jl to the MPI library of the loaded module, so run it again whenever the modules change; on a laptop without an MPI module, `--system-mpi=false` keeps MPI.jl's own MPICH. The backend preference is fixed per environment: GPU runs need `KernelAbstractions`, and `scaling.jl` stops otherwise.
+
+## Running `scaling.jl`
+
+```sh
+julia --project=mpi mpi/scaling.jl --case=tgv --log2p=7                               # serial
+mpiexec -n 4 julia --project=mpi mpi/scaling.jl --case=tgv --log2p=7                  # 4 CPU ranks
+srun -n 8 julia --project=mpi mpi/scaling.jl --case=tgv --log2p=8 --backend=CuArray   # 8 GPUs
+```
+
+The cases are those of `src/cases.jl`: `tgv` is `tgv_periodic` (triply periodic, a `(2^p)^3` box) and `sphere` is the sphere with a convective exit (a `16D×6D×6D` box, `D = 2^p`). `--log2p` sets the global size; with `--weak` it is the size per rank, and the global grid grows with the number of ranks (each rank of the weak TGV holds one period). `--dims=a,b,c` gives the size in cells instead. Other options: `--backend=Array|CuArray`, `--T=Float32|Float64`, `--steps` and `--warmup` (timed and untimed steps), and `--serial` (no MPI, even under `srun`). Rank 0 prints
+
+```
+[ Info: MPI np=8  case=tgv  grid=256x256x256  local=128x128x128  100 steps  per_step=...ms  levels=7  mean_iters=1.0  cost=...ns/DOF/dt  backend=CuArray
+```
+
+after a header with the WaterLily commit, the MPI library and the device of each rank. When every rank sees all the GPUs of its node, ImplicitGlobalGrid gives each node-local rank its own GPU; when the launcher binds one GPU per rank (Slurm `--gpus-per-task=1`, the default on JUPITER), each rank keeps the one it sees. Check in the header that the ranks of a node show different GPUs. To test the GPU code paths on a machine with one GPU, let several ranks share it: `CUDA_VISIBLE_DEVICES=0 mpiexec -n 2 ...` (the timings are then meaningless).
+
+## Correctness of the multi-GPU TGV
+
+`--check=k` records the global kinetic energy, enstrophy, `max|u|`, `max|p|`, time step and Poisson iterations every `k` steps, and `--out=file.csv` saves them. [`mpi/jobs/jupiter_tgv_check.sh`](https://github.com/WaterLily-jl/WaterLily-Benchmarks/tree/main/mpi/jobs/jupiter_tgv_check.sh) runs the TGV from its initial condition on one GPU without MPI and with MPI on 1, 4 and 8 GPUs (two nodes), on 8 GPUs with host-staged halos, and on 8 CPU ranks, then compares them all with `mpi/check.jl`:
+
+```sh
+sbatch -A <budget> mpi/jobs/jupiter_tgv_check.sh 7 200 10   # log2p, steps, record every 10 steps
+```
+
+What to expect, from the same check of a `64^3` TGV over 100 steps on one laptop GPU shared by up to 4 ranks:
+
+- MPI on one GPU is identical to the run without MPI (`identical` in the table), as on CPUs.
+- CUDA-aware (`IGG_CUDAAWARE_MPI=1`) and host-staged (`=0`) halos give identical results: only the transport changes.
+- With more ranks, the diagnostics differ slightly from the serial run (largest relative difference of the kinetic energy about `4e-4` on 2 and 4 ranks): the halo is one cell wide, so at the faces between ranks the convection term uses the one-sided form of the domain boundaries.
+- GPU and CPU runs with the same decomposition differ by FP32 round-off (about `3e-5`).
+
+On GPUs every halo of the solver (velocity, pressure, multigrid levels) goes through ImplicitGlobalGrid on device memory, CUDA-aware with `IGG_CUDAAWARE_MPI=1`. Only `ForwardDiff.Dual` and `Bool` arrays still copy each component to a host buffer and back.
+
+## Scaling curves
+
+`mpi/jobs/submit.sh` submits one job per node count, each running `mpi/jobs/<cluster>_scaling.sh`:
+
+```sh
+bash mpi/jobs/submit.sh jupiter strong tgv 9 "1 2 4 8 16" -- -A <budget>
+bash mpi/jobs/submit.sh jupiter weak tgv 8 "1 2 4 8 16 32" -- -A <budget>
+bash mpi/jobs/submit.sh snellius weak tgv 6 "1 2 4 8"
+```
+
+The first job also runs the points inside one node (on JUPITER 1, 2 and 4 GPUs, the first without MPI, which is the reference of the efficiency). The outputs go to `data/mpi/<cluster>_<mode>_<case>_<log2p>/`, and the plot scripts read a whole directory and save the figure in it:
+
+```sh
+julia --project=plotting mpi/plot_strong.jl data/mpi/jupiter_strong_tgv_9
+julia --project=plotting mpi/plot_weak.jl data/mpi/jupiter_weak_tgv_8 --refnp=4   # efficiency against one full node
+```
+
+On Snellius, `WATERLILY_RPN` sets the ranks per node (default 64), spread evenly over the CCXs of each node. On JUPITER there is one rank per GPU, 4 per node.

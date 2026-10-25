@@ -41,6 +41,7 @@ The [documentation](https://waterlily-jl.github.io/WaterLily-Benchmarks/dev/) co
 - [Cases and checkpoints](https://waterlily-jl.github.io/WaterLily-Benchmarks/dev/cases): the test cases, the developed-flow checkpoints and how to add a case.
 - [Pull-request benchmarks](https://waterlily-jl.github.io/WaterLily-Benchmarks/dev/pull-requests): `/benchmark` on WaterLily.jl pull requests and the GitHub Action behind it.
 - [Methodology](https://waterlily-jl.github.io/WaterLily-Benchmarks/dev/methodology): what is timed and what each column means.
+- [MPI scaling](https://waterlily-jl.github.io/WaterLily-Benchmarks/dev/mpi): strong and weak scaling of WaterLily's MPI extension on CPUs and GPUs, and multi-GPU correctness checks (`mpi/`).
 - [BiotSavartBCs changes](https://waterlily-jl.github.io/WaterLily-Benchmarks/dev/biotsavart), [environments](https://waterlily-jl.github.io/WaterLily-Benchmarks/dev/environments), [profiling](https://waterlily-jl.github.io/WaterLily-Benchmarks/dev/profiling) and [clusters and data](https://waterlily-jl.github.io/WaterLily-Benchmarks/dev/clusters).
 
 The data of published studies are in [WaterLily-Benchmarks-data](https://github.com/WaterLily-jl/WaterLily-Benchmarks-data).
