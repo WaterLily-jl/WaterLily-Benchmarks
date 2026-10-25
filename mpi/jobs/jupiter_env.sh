@@ -8,14 +8,16 @@
 #     module avail; module spider ParaStationMPI; ml show MPI-settings
 # and pass your budget to sbatch (-A <budget>).
 
-module --force purge
+module purge                    # keeps the (sticky) Stages module; --force would drop it too
 module load GCC ParaStationMPI
 module load MPI-settings/CUDA   # CUDA-aware settings of the MPI module
 module load CUDA
 module load Julia               # WaterLily mpi-igg needs Julia >= 1.11; juliaup works too (put it first in PATH)
 
 # The Julia depot needs a few GB and compute nodes have no internet: keep it in the project file system
-export JULIA_DEPOT_PATH="${JULIA_DEPOT_PATH:-$PROJECT/$USER/julia_depot}"
-export WATERLILY_DIR="${WATERLILY_DIR:-$PROJECT/$USER/WaterLily.jl}"  # WaterLily.jl clone, branch mpi-igg
+# $PROJECT is set by `jutil env activate -p <project>`; without it the depot and the clone default to $HOME
+WL_BASE="${PROJECT:+$PROJECT/$USER}"; WL_BASE="${WL_BASE:-$HOME}"
+export JULIA_DEPOT_PATH="${JULIA_DEPOT_PATH:-$WL_BASE/julia_depot}"
+export WATERLILY_DIR="${WATERLILY_DIR:-$WL_BASE/WaterLily.jl}"  # WaterLily.jl clone, branch mpi-igg
 # ImplicitGlobalGrid sends the halos of GPU arrays straight from device memory (1), or stages them on the host (0)
 export IGG_CUDAAWARE_MPI="${IGG_CUDAAWARE_MPI:-1}"

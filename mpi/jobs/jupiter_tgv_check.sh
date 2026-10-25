@@ -20,9 +20,9 @@
 # rank faces (the halo is one cell wide), so the diagnostics differ slightly from the serial run (~1e-4 to 1e-3);
 # the 8-GPU and 8-CPU runs use the same decomposition and differ by FP32 round-off.
 
-set -uo pipefail
 cd "$SLURM_SUBMIT_DIR"
-source mpi/jobs/jupiter_env.sh
+source mpi/jobs/jupiter_env.sh  # before set -u: module functions may read unset variables
+set -uo pipefail
 P="${1:-7}"; STEPS="${2:-200}"; CHECK="${3:-10}"
 DIR="data/mpi/jupiter_tgv_check_${SLURM_JOB_ID}"; mkdir -p "$DIR"
 echo "WaterLily: $(git -C "$WATERLILY_DIR" log -1 --format='%h %s')   WaterLily-Benchmarks: $(git log -1 --format=%h)"

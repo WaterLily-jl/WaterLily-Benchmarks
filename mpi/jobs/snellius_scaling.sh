@@ -16,9 +16,9 @@
 # MODE is strong (LOG2P sets the global size) or weak (LOG2P sets the size per rank); 1 in NPS runs without MPI.
 # mpi/jobs/submit.sh submits a whole curve, one job per node count. --ear=on is not set: it crashes MPI.jl at init.
 
-set -uo pipefail
 cd "$SLURM_SUBMIT_DIR"
-source mpi/jobs/snellius_env.sh
+source mpi/jobs/snellius_env.sh  # before set -u: module functions may read unset variables
+set -uo pipefail
 MODE="${1:?usage: snellius_scaling.sh MODE CASE LOG2P [STEPS] [WARMUP] [NPS]}"; CASE="${2:?missing CASE}"; P="${3:?missing LOG2P}"
 RPN="${WATERLILY_RPN:-64}"
 STEPS="${4:-100}"; WARMUP="${5:-20}"; NPS="${6:-$((RPN*SLURM_JOB_NUM_NODES))}"
