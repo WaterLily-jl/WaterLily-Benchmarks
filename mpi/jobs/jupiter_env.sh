@@ -26,5 +26,7 @@ if [ -n "${SLURM_CPUS_PER_TASK:-}" ]; then export SRUN_CPUS_PER_TASK="$SLURM_CPU
 WL_BASE="${PROJECT:+$PROJECT/$USER}"; WL_BASE="${WL_BASE:-$HOME}"
 export JULIA_DEPOT_PATH="${JULIA_DEPOT_PATH:-$WL_BASE/julia_depot}"
 export WATERLILY_DIR="${WATERLILY_DIR:-$WL_BASE/WaterLily.jl}"  # WaterLily.jl clone, branch mpi-igg
-# ImplicitGlobalGrid sends the halos of GPU arrays straight from device memory (1), or stages them on the host (0)
-export IGG_CUDAAWARE_MPI="${IGG_CUDAAWARE_MPI:-1}"
+# ImplicitGlobalGrid stages the halos of GPU arrays through host memory (0), a cheap copy over the GH200's CPU-GPU
+# link, or passes device buffers to MPI (1). With ParaStation MPI 0 was faster: TGV 512^3, 64.5 against 75.2 ms per
+# step on 4 GPUs, 41.7 against 79.8 ms on 8 GPUs of 2 nodes.
+export IGG_CUDAAWARE_MPI="${IGG_CUDAAWARE_MPI:-0}"

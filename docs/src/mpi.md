@@ -41,7 +41,7 @@ after a header with the WaterLily commit, the MPI library and the device of each
 
 ## Correctness of the multi-GPU TGV
 
-`--check=k` records the global kinetic energy, enstrophy, `max|u|`, `max|p|`, time step and Poisson iterations every `k` steps, and `--out=file.csv` saves them. [`mpi/jobs/jupiter_tgv_check.sh`](https://github.com/WaterLily-jl/WaterLily-Benchmarks/tree/main/mpi/jobs/jupiter_tgv_check.sh) runs the TGV from its initial condition on one GPU without MPI and with MPI on 1, 4 and 8 GPUs (two nodes), on 8 GPUs with host-staged halos, and on 8 CPU ranks, then compares them all with `mpi/check.jl`:
+`--check=k` records the global kinetic energy, enstrophy, `max|u|`, `max|p|`, time step and Poisson iterations every `k` steps, and `--out=file.csv` saves them. [`mpi/jobs/jupiter_tgv_check.sh`](https://github.com/WaterLily-jl/WaterLily-Benchmarks/tree/main/mpi/jobs/jupiter_tgv_check.sh) runs the TGV from its initial condition on one GPU without MPI and with MPI on 1, 4 and 8 GPUs (two nodes), on 8 GPUs with CUDA-aware halos, and on 8 CPU ranks, then compares them all with `mpi/check.jl`:
 
 ```sh
 sbatch -A <budget> mpi/jobs/jupiter_tgv_check.sh 7 200 10   # log2p, steps, record every 10 steps
@@ -54,7 +54,7 @@ What to expect, from the same check of a `64^3` TGV over 100 steps on one laptop
 - With more ranks, the diagnostics differ slightly from the serial run (largest relative difference of the kinetic energy about `4e-4` on 2 and 4 ranks): the halo is one cell wide, so at the faces between ranks the convection term uses the one-sided form of the domain boundaries.
 - GPU and CPU runs with the same decomposition differ by FP32 round-off (about `3e-5`).
 
-On GPUs every halo stays in device memory. The halos of the solver (velocity, pressure, multigrid levels) go through ImplicitGlobalGrid, CUDA-aware with `IGG_CUDAAWARE_MPI=1`; `ForwardDiff.Dual` and `Bool` arrays, which ImplicitGlobalGrid does not take, go through WaterLily's own `MPI.Sendrecv!` on device buffers, so they need a CUDA-aware MPI.
+The halos of the solver (velocity, pressure, multigrid levels) go through ImplicitGlobalGrid, which either passes device buffers to a CUDA-aware MPI (`IGG_CUDAAWARE_MPI=1`) or stages them through host memory (`=0`). `jupiter_env.sh` stages them: on the GH200 nodes the copy to the host is cheap, and with ParaStation MPI a `512^3` TGV took 64.5 against 75.2 ms per step on 4 GPUs and 41.7 against 79.8 ms on 8 GPUs of two nodes. `ForwardDiff.Dual` and `Bool` arrays, which ImplicitGlobalGrid does not take, go through WaterLily's own `MPI.Sendrecv!` on device buffers, so they need a CUDA-aware MPI either way.
 
 ## Scaling curves
 
