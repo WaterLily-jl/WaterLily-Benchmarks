@@ -18,6 +18,8 @@
 #   --serial                  run serial even under an MPI launcher (a reference run inside a Slurm job)
 #   --profile                 profile the timed steps with CUDA.@profile (CuArray): rank 0 prints the summary of the
 #                             API calls and kernels; under `nsys profile --capture-range=cudaProfilerApi` it marks them
+#   --cpuprofile              sample the timed steps with Julia's profiler: rank 0 prints where the main thread spends
+#                             its time (self samples, C frames such as MPI and UCX included)
 #
 # Rank 0 prints one line per run, which mpi/plot_strong.jl and mpi/plot_weak.jl read:
 #   [ Info: MPI np=8  case=tgv  grid=256x256x256  local=128x128x128  100 steps  per_step=12.3ms  ...
@@ -36,6 +38,7 @@ const Nwarmup = parse(Int, arg("warmup", "20"))
 const check   = parse(Int, arg("check", "0"))
 const outfile = arg("out", "")
 const profile = flag("profile")
+const cpuprofile = flag("cpuprofile")
 case in ("tgv", "sphere") || error("unknown --case=$case: use tgv or sphere")
 bname in ("Array", "CuArray") || error("unknown --backend=$bname: use Array or CuArray")
 (profile && bname != "CuArray") && error("--profile needs --backend=CuArray")
@@ -129,7 +132,14 @@ for s in 1:Nwarmup; sim_step!(sim; remeasure=false); record!(s); end
 GC.gc(); barrier()
 timed_steps() = (for s in Nwarmup+1:Nwarmup+Nsteps; sim_step!(sim; remeasure=false); record!(s); end; barrier())
 prof = nothing  # the CUDA.@profile summary (nothing under an external profiler)
-t = @elapsed (profile ? (prof = @eval CUDA.@profile timed_steps()) : timed_steps())
+cpuprofile && (using Profile; Profile.init(n=10^7, delay=0.0005))
+t = @elapsed if profile
+    prof = @eval CUDA.@profile timed_steps()
+elseif cpuprofile
+    @eval Profile.@profile timed_steps()
+else
+    timed_steps()
+end
 
 if me == 0
     ms = t/Nsteps*1e3
@@ -139,6 +149,18 @@ if me == 0
           "$Nsteps steps  per_step=$(round(ms, digits=2))ms  levels=$(length(sim.pois.levels))  " *
           "mean_iters=$(round(sum(iters)/length(iters), digits=1))  cost=$(@sprintf("%.3f", ms*1e6/prod(gdims)))ns/DOF/dt  backend=$bname"
     isnothing(prof) || show(IOContext(stdout, :displaysize => (10_000, 200)), MIME("text/plain"), prof)
+    # main thread: frames of the packages, MPI/UCX and the GC by total samples, then all frames by self samples
+    pkgs = r"WaterLily|ImplicitGlobalGrid|@MPI|@CUDA|@GPUArrays|@KernelAbstractions|gc\.c|libmpi|libpscom|libuc[pst]|libcuda"
+    for (by, n, keep) in (cpuprofile ? ((:count, 50, l -> occursin(pkgs, l)), (:overhead, 25, l -> true)) : ())
+        io = IOBuffer()
+        Profile.print(IOContext(io, :displaysize => (10_000, 200)); format=:flat, sortedby=by, C=true,
+                      threads=Threads.threadid())
+        lines = split(String(take!(io)), '\n')
+        total = filter(startswith("Total snapshots"), lines)
+        body = filter(l -> keep(l) && !(l in total), lines[3:end])
+        println("\nMain thread, frames by $(by == :count ? "total" : "self") samples. ", join(total))
+        foreach(println, lines[1:2]); foreach(println, body[max(1, end-n+1):end])
+    end
     if check > 0
         cols = keys(first(rows))
         println(join(cols, "  "))
