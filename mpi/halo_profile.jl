@@ -1,9 +1,12 @@
 # Where ImplicitGlobalGrid's update_halo! of WaterLily-sized device arrays spends its time, without WaterLily.
 #
-#   srun -n 2 julia --project=mpi mpi/halo_profile.jl [N=128] [FIELDS=1]
+#   srun -n 2 julia --project=mpi mpi/halo_profile.jl [N=128] [FIELDS=1] [OWNERSYNC=1]
 #
 # The ranks split a periodic N^3 box as WaterLily does (one ghost cell per side) and exchange the halos of FIELDS
-# device arrays (1: a scalar such as the pressure, 3: the velocity) along the split dimensions. Rank 0 prints the
+# device arrays (1: a scalar such as the pressure, 3: the velocity) along the split dimensions. OWNERSYNC=0 turns
+# off CUDA.jl's implicit synchronization when a kernel uses an array last used on another stream
+# (CUDA.enable_synchronization!): ImplicitGlobalGrid packs and unpacks each side on its own stream, so CUDA.jl waits
+# for the previous side every time, although ImplicitGlobalGrid synchronizes its streams itself. Rank 0 prints the
 # time per update_halo!, then
 #   1. CUDA.@profile of 100 calls: the CUDA API calls (launches, syncs, copies) and the kernels behind them,
 #   2. Julia's sampling profiler over about 2 s of calls: where the host spends that time, by line of
@@ -13,19 +16,20 @@ using MPI, CUDA, ImplicitGlobalGrid, Printf, Profile
 MPI.Init()
 const comm = MPI.COMM_WORLD
 const me, np = MPI.Comm_rank(comm), MPI.Comm_size(comm)
-N = parse(Int, get(ARGS, 1, "128")); nfields = parse(Int, get(ARGS, 2, "1"))
+N = parse(Int, get(ARGS, 1, "128")); nfields = parse(Int, get(ARGS, 2, "1")); ownersync = get(ARGS, 3, "1") != "0"
 mpidims = Tuple(Int.(MPI.Dims_create(np, [0, 0, 0])))
 nxyz = N .÷ mpidims .+ 2
 init_global_grid(nxyz...; dimx=mpidims[1], dimy=mpidims[2], dimz=mpidims[3], periodx=1, periody=1, periodz=1,
                  overlaps=(2, 2, 2), halowidths=(1, 1, 1), init_MPI=false, select_device=false, quiet=true)
 splitdims = Tuple(findall(>(1), collect(mpidims)))
 A = [CUDA.rand(Float32, nxyz...) for _ in 1:nfields]; CUDA.synchronize()
+foreach(a -> CUDA.enable_synchronization!(a, ownersync), A)
 calls(n) = for _ in 1:n; update_halo!(A...; dims=splitdims); end
 
 calls(50); CUDA.synchronize(); MPI.Barrier(comm)
 t = @elapsed (calls(1000); CUDA.synchronize(); MPI.Barrier(comm))
-me == 0 && @printf("update_halo! of %d field(s) of %s, split %s, IGG_CUDAAWARE_MPI=%s: %.1f us per call\n",
-                   nfields, join(nxyz, "x"), join(mpidims, "x"), get(ENV, "IGG_CUDAAWARE_MPI", ""), 1e3t)
+me == 0 && @printf("update_halo! of %d field(s) of %s, split %s, IGG_CUDAAWARE_MPI=%s, OWNERSYNC=%d: %.1f us per call\n",
+                   nfields, join(nxyz, "x"), join(mpidims, "x"), get(ENV, "IGG_CUDAAWARE_MPI", ""), ownersync, 1e3t)
 
 prof = CUDA.@profile calls(100)
 if me == 0

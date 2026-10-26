@@ -8,7 +8,7 @@
 | `mpi/scaling.jl` | times `sim_step!` of a case on every rank and prints the time per step; `--check` also records global diagnostics |
 | `mpi/check.jl` | compares the diagnostics of several runs with a reference run |
 | `mpi/cuda_mpi_test.jl` | checks the CUDA-aware MPI alone: correctness on device buffers, and the ping-pong speed of device against host buffers (profile it with Nsight Systems to see how MPI moves device buffers) |
-| `mpi/halo_profile.jl` | profiles ImplicitGlobalGrid's `update_halo!` of WaterLily-sized device arrays alone: time per call, the CUDA calls and kernels behind it (`CUDA.@profile`), and where the host spends the time (Julia's profiler) |
+| `mpi/halo_profile.jl` | profiles ImplicitGlobalGrid's `update_halo!` of WaterLily-sized device arrays alone: time per call, the CUDA calls and kernels behind it (`CUDA.@profile`), and where the host spends the time (Julia's profiler); optionally without CUDA.jl's implicit synchronization between streams |
 | `mpi/plot_strong.jl`, `mpi/plot_weak.jl` | plot the scaling curves from the job outputs (with the `plotting` environment) |
 | `mpi/jobs/` | the environment and job scripts of each cluster (`jupiter_*`, `snellius_*`) and `submit.sh` |
 
@@ -66,7 +66,7 @@ bash mpi/jobs/submit.sh jupiter weak tgv 8 "1 2 4 8 16 32" -- -A <budget>
 bash mpi/jobs/submit.sh snellius weak tgv 6 "1 2 4 8"
 ```
 
-The first job also runs the points inside one node (on JUPITER 1, 2 and 4 GPUs, the first without MPI, which is the reference of the efficiency). The outputs go to `data/mpi/<cluster>_<mode>_<case>_<log2p>/`, and the plot scripts read a whole directory and save the figure in it:
+The first job also runs the points inside one node (on JUPITER 1, 2 and 4 GPUs, the first without MPI, which is the reference of the efficiency). `WATERLILY_BACKEND=Array bash mpi/jobs/submit.sh jupiter ...` runs the same curve on the CPUs of the JUPITER nodes: one rank per Grace CPU, with one Julia thread per core (72), so the ranks and the decomposition are those of the GPU runs; the outputs go to `data/mpi/jupiter_cpu_<mode>_<case>_<log2p>/`. Each job prints the cores of the ranks of its first node, which should be those of one Grace CPU each (0-71, 72-143, ...). The outputs go to `data/mpi/<cluster>_<mode>_<case>_<log2p>/`, and the plot scripts read a whole directory and save the figure in it:
 
 ```sh
 julia --project=plotting mpi/plot_strong.jl data/mpi/jupiter_strong_tgv_9
