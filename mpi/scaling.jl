@@ -16,6 +16,8 @@
 #   --check=k           [0]   print and save the global diagnostics every k steps (0: timing only)
 #   --out=file.csv            where rank 0 writes the diagnostics of --check
 #   --serial                  run serial even under an MPI launcher (a reference run inside a Slurm job)
+#   --profile                 profile the timed steps with CUDA.@profile (CuArray): rank 0 prints the summary of the
+#                             API calls and kernels; under `nsys profile --capture-range=cudaProfilerApi` it marks them
 #
 # Rank 0 prints one line per run, which mpi/plot_strong.jl and mpi/plot_weak.jl read:
 #   [ Info: MPI np=8  case=tgv  grid=256x256x256  local=128x128x128  100 steps  per_step=12.3ms  ...
@@ -33,8 +35,10 @@ const Nsteps  = parse(Int, arg("steps", "100"))
 const Nwarmup = parse(Int, arg("warmup", "20"))
 const check   = parse(Int, arg("check", "0"))
 const outfile = arg("out", "")
+const profile = flag("profile")
 case in ("tgv", "sphere") || error("unknown --case=$case: use tgv or sphere")
 bname in ("Array", "CuArray") || error("unknown --backend=$bname: use Array or CuArray")
+(profile && bname != "CuArray") && error("--profile needs --backend=CuArray")
 
 # Size of the case: global for strong scaling, per rank for weak scaling
 const dims = let d = arg("dims", "")
@@ -123,10 +127,9 @@ sync() = bname == "CuArray" && CUDA.synchronize()
 barrier() = (sync(); use_mpi && MPI.Barrier(comm))
 for s in 1:Nwarmup; sim_step!(sim; remeasure=false); record!(s); end
 GC.gc(); barrier()
-t = @elapsed begin
-    for s in Nwarmup+1:Nwarmup+Nsteps; sim_step!(sim; remeasure=false); record!(s); end
-    barrier()
-end
+timed_steps() = (for s in Nwarmup+1:Nwarmup+Nsteps; sim_step!(sim; remeasure=false); record!(s); end; barrier())
+prof = nothing  # the CUDA.@profile summary (nothing under an external profiler)
+t = @elapsed (profile ? (prof = @eval CUDA.@profile timed_steps()) : timed_steps())
 
 if me == 0
     ms = t/Nsteps*1e3
@@ -135,6 +138,7 @@ if me == 0
     @info "$prefix  case=$case$(weak ? "  mode=weak" : "")  grid=$(join(gdims, "x"))  local=$(join(local_dims, "x"))  " *
           "$Nsteps steps  per_step=$(round(ms, digits=2))ms  levels=$(length(sim.pois.levels))  " *
           "mean_iters=$(round(sum(iters)/length(iters), digits=1))  cost=$(@sprintf("%.3f", ms*1e6/prod(gdims)))ns/DOF/dt  backend=$bname"
+    isnothing(prof) || show(IOContext(stdout, :displaysize => (10_000, 200)), MIME("text/plain"), prof)
     if check > 0
         cols = keys(first(rows))
         println(join(cols, "  "))
