@@ -5,8 +5,10 @@
 #
 # Rank 0 and 1 send a buffer back and forth (ping-pong) and rank 0 prints the one-way time and bandwidth per size.
 # Then all ranks split a periodic N^3 box as WaterLily does (one ghost cell per side) and rank 0 prints the time of
-# one update_halo! of a scalar field and of the three velocity components, for device and host arrays, and of an
-# Allreduce of one number: per time step WaterLily makes about 60 halo exchanges and 15 reductions (TGV, 2 ranks).
+# one update_halo! of a scalar field and of the three velocity components, for device and host arrays, of the MPI
+# calls of one such exchange alone (receive from and send to both neighbours of the first split dimension, buffers of
+# the face size), and of an Allreduce of one number: per time step WaterLily makes about 60 halo exchanges and 15
+# reductions (TGV, 2 ranks).
 # A CUDA-aware MPI moves device buffers between the GPUs (NVLink inside a node) at least as fast as host buffers;
 # much slower device buffers mean the MPI library stages them through the host. To see how it moves them, profile it:
 #
@@ -73,14 +75,23 @@ function per_call(f, n)
     for _ in 1:n; f(); end
     CUDA.synchronize(); MPI.Barrier(comm); 1e6 * (MPI.Wtime() - t) / n
 end
+d = first(splitdims); lo, hi = ImplicitGlobalGrid.neighbors(d)  # the neighbours along the first split dimension
+face = prod(nxyz[k] for k in 1:3 if k != d)
+function exchange!(s, r)  # the MPI calls of one halo exchange of one field along d
+    reqs = [MPI.Irecv!(r[1], comm; source=lo, tag=1), MPI.Irecv!(r[2], comm; source=hi, tag=2),
+            MPI.Isend(s[1], comm; dest=hi, tag=1), MPI.Isend(s[2], comm; dest=lo, tag=2)]
+    MPI.Waitall(reqs)
+end
 for (name, alloc) in (("device", CUDA.rand), ("host", rand))
     p = alloc(Float32, nxyz...); u = [alloc(Float32, nxyz...) for _ in 1:3]; CUDA.synchronize()
+    s, r = [alloc(Float32, face) for _ in 1:2], [alloc(Float32, face) for _ in 1:2]; CUDA.synchronize()
     tp = per_call(() -> update_halo!(p; dims=splitdims), 200)
     tu = per_call(() -> update_halo!(u...; dims=splitdims), 200)
-    me == 0 && @printf("update_halo! %-6s  %s, split %s: scalar %8.1f us, velocity %8.1f us\n",
-                       name, join(nxyz, "x"), join(mpidims, "x"), tp, tu)
+    tm = per_call(() -> exchange!(s, r), 200)
+    me == 0 && @printf("%-6s %s, split %s: update_halo! scalar %7.1f us, velocity %7.1f us; MPI only %7.1f us\n",
+                       name, join(nxyz, "x"), join(mpidims, "x"), tp, tu, tm)
 end
 ta = per_call(() -> MPI.Allreduce(1f0, +, comm), 1000)
-me == 0 && @printf("Allreduce of one Float32: %.1f us\nIGG_CUDAAWARE_MPI=%s\n", ta, get(ENV, "IGG_CUDAAWARE_MPI", "unset"))
+me == 0 && @printf("Allreduce of one Float32: %.1f us (IGG_CUDAAWARE_MPI=%s)\n", ta, get(ENV, "IGG_CUDAAWARE_MPI", ""))
 finalize_global_grid(finalize_MPI=false)
 MPI.Finalize()
