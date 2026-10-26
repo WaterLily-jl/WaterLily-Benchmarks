@@ -21,6 +21,9 @@
 #   --cpuprofile              sample the timed steps with Julia's profiler: rank 0 prints where the main thread spends
 #                             its time (self samples, C frames such as MPI and UCX included)
 #
+# With IGG_TRACE=1 and the ImplicitGlobalGrid fork's timers (branch halo-trace), rank 0 also prints the time per step
+# that the timed steps spent in update_halo!, by array size, phase and dimension (ImplicitGlobalGrid.halo_trace).
+#
 # Rank 0 prints one line per run, which mpi/plot_strong.jl and mpi/plot_weak.jl read:
 #   [ Info: MPI np=8  case=tgv  grid=256x256x256  local=128x128x128  100 steps  per_step=12.3ms  ...
 using StaticArrays, Printf, LibGit2
@@ -140,6 +143,8 @@ sync() = bname == "CuArray" && CUDA.synchronize()
 barrier() = (sync(); use_mpi && MPI.Barrier(comm))
 for s in 1:Nwarmup; sim_step!(sim; remeasure=false); record!(s); end
 GC.gc(); barrier()
+const halo_timers = use_mpi && get(ENV, "IGG_TRACE", "0") != "0" && isdefined(ImplicitGlobalGrid, :halo_trace)
+halo_timers && ImplicitGlobalGrid.halo_trace_reset!()
 timed_steps() = (for s in Nwarmup+1:Nwarmup+Nsteps; sim_step!(sim; remeasure=false); record!(s); end; barrier())
 prof = nothing  # the CUDA.@profile summary (nothing under an external profiler)
 cpuprofile && (using Profile; Profile.init(n=10^7, delay=0.0005))
@@ -185,4 +190,5 @@ if me == 0
         end
     end
 end
+halo_timers && ImplicitGlobalGrid.halo_trace(per=Nsteps, unit="step")
 use_mpi && finalize_global_grid()
