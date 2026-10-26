@@ -1,11 +1,13 @@
 # Build the MPI benchmark environment (mpi/Project.toml) on a login node, which has internet access:
 #
 #   source mpi/jobs/<cluster>_env.sh        # the MPI (and CUDA) modules used by the jobs
-#   julia mpi/setup.jl [--backend=KernelAbstractions|SIMD] [--cuda-local] [--system-mpi=false] [--mpi-abi=MPICH]
+#   julia mpi/setup.jl [--backend=KernelAbstractions|SIMD] [--env=DIR] [--cuda-local] [--system-mpi=false] [--mpi-abi=MPICH]
 #
 # It develops WaterLily from $WATERLILY_DIR (a WaterLily.jl clone on branch mpi-igg), binds MPI.jl to the MPI
 # library of the loaded module (MPIPreferences.use_system_binary), sets WaterLily's backend and precompiles.
 #   --backend     KernelAbstractions (default) for GPUs and threaded CPUs, SIMD for one thread per rank on CPUs
+#   --env         build the environment in DIR instead of mpi/, with the packages of mpi/Project.toml: a second
+#                 environment with another backend, e.g. mpi/cpu with SIMD for the CPU runs on JUPITER
 #   --cuda-local  use the CUDA toolkit of the loaded module instead of the CUDA_jll artifacts, so that CUDA.jl and a
 #                 CUDA-aware MPI use the same CUDA runtime
 #   --system-mpi=false  keep MPI.jl's own MPICH (a laptop without an MPI module)
@@ -17,8 +19,13 @@ const backend = arg("backend", "KernelAbstractions")
 backend in ("KernelAbstractions", "SIMD") || error("--backend must be KernelAbstractions or SIMD")
 
 ENV["JULIA_PKG_PRECOMPILE_AUTO"] = "0"  # precompile once, at the end, with the preferences below in place
-using Pkg
-Pkg.activate(@__DIR__)
+using Pkg, TOML
+const env = String(rstrip(abspath(arg("env", @__DIR__)), '/'))
+if env != @__DIR__  # the packages of mpi/Project.toml, without its [sources]: Pkg.develop below sets the path of WaterLily
+    project = TOML.parsefile(joinpath(@__DIR__, "Project.toml")); delete!(project, "sources")
+    mkpath(env); open(io -> TOML.print(io, project), joinpath(env, "Project.toml"), "w")
+end
+Pkg.activate(env)
 
 # WaterLily: the MPI extension lives on branch mpi-igg; print the commit so a wrong checkout shows up here, not in a job
 wl_dir = get(ENV, "WATERLILY_DIR", "")
@@ -50,5 +57,5 @@ set_preferences!(UUID("ed894a53-35f9-47f1-b17f-85db9237eebd"), "backend" => back
 Pkg.precompile()
 Pkg.status()
 println("\nWaterLily backend: $backend. Smoke test (serial, then 2 ranks):")
-println("  julia --project=mpi mpi/scaling.jl --case=tgv --log2p=5 --steps=10 --warmup=5")
-println("  mpiexec -n 2 julia --project=mpi mpi/scaling.jl --case=tgv --log2p=5 --steps=10 --warmup=5")
+println("  julia --project=$(relpath(env)) mpi/scaling.jl --case=tgv --log2p=5 --steps=10 --warmup=5")
+println("  mpiexec -n 2 julia --project=$(relpath(env)) mpi/scaling.jl --case=tgv --log2p=5 --steps=10 --warmup=5")

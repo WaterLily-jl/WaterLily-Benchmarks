@@ -14,9 +14,7 @@
 #
 # MODE is strong (LOG2P sets the global size) or weak (LOG2P sets the size per GPU). NPS lists the numbers of
 # GPUs to run, at most 4 per node; 1 runs on one GPU without MPI, the reference of the efficiency.
-# mpi/jobs/submit.sh submits a whole curve, one job per node count.
-# WATERLILY_BACKEND=Array runs on the CPUs instead, with the same ranks and decomposition: one rank per Grace CPU,
-# with one Julia thread per core (KernelAbstractions backend, as the GPU runs).
+# mpi/jobs/submit.sh submits a whole curve, one job per node count. The CPU curves run jupiter_cpu_scaling.sh.
 
 cd "$SLURM_SUBMIT_DIR"
 ulimit -c 0  # no core dumps: one crashed rank can write tens of GB
@@ -25,9 +23,8 @@ set -uo pipefail
 MODE="${1:?usage: jupiter_scaling.sh MODE CASE LOG2P [STEPS] [WARMUP] [NPS]}"; CASE="${2:?missing CASE}"; P="${3:?missing LOG2P}"
 STEPS="${4:-100}"; WARMUP="${5:-20}"; NPS="${6:-$((4*SLURM_JOB_NUM_NODES))}"
 [ "$MODE" = weak ] && WEAK="--weak" || WEAK=""
-BACKEND="${WATERLILY_BACKEND:-CuArray}"; THREADS=4; [ "$BACKEND" = Array ] && THREADS="$SLURM_CPUS_PER_TASK"
 echo "WaterLily: $(git -C "$WATERLILY_DIR" log -1 --format='%h %s')   IGG_CUDAAWARE_MPI=$IGG_CUDAAWARE_MPI"
-echo "$MODE scaling, $CASE log2p=$P, $STEPS steps after $WARMUP, backend $BACKEND, $THREADS threads per rank, ranks: $NPS"
+echo "$MODE scaling, $CASE log2p=$P, $STEPS steps after $WARMUP, GPUs: $NPS"
 # The cores of the ranks of one node: each rank should get the 72 cores of one Grace CPU (0-71, 72-143, ...)
 srun -N 1 -n 4 bash -c 'echo "  rank $SLURM_PROCID: cores$(taskset -cp $$ | cut -d: -f2)"' | sort -k2n
 
@@ -35,7 +32,7 @@ for np in $NPS; do
     nodes=$(( (np + 3) / 4 ))
     if [ "$nodes" -gt "$SLURM_JOB_NUM_NODES" ]; then echo "[ SKIPPED np=$np: needs $nodes nodes ]"; continue; fi
     serial=""; [ "$np" -eq 1 ] && serial="--serial"
-    srun -N "$nodes" -n "$np" julia --project=mpi -t "$THREADS" mpi/scaling.jl --case="$CASE" --log2p="$P" $WEAK \
-        --backend="$BACKEND" --steps="$STEPS" --warmup="$WARMUP" $serial 2>&1 \
+    srun -N "$nodes" -n "$np" julia --project=mpi -t 4 mpi/scaling.jl --case="$CASE" --log2p="$P" $WEAK \
+        --backend=CuArray --steps="$STEPS" --warmup="$WARMUP" $serial 2>&1 \
         | grep -E "Info|MPI:|Warn|ERROR" || echo "[ FAILED: $CASE np=$np ]"
 done
