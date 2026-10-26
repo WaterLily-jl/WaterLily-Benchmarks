@@ -8,8 +8,8 @@
 #   bash mpi/jobs/submit.sh jupiter_cpu strong tgv 8 "1 2 4 8 16" -- -A <budget>
 #   bash mpi/jobs/submit.sh snellius strong tgv 8 "1 2 4 8"
 #
-# CLUSTER selects mpi/jobs/<CLUSTER>_scaling.sh. The first job also runs the points inside one node (on JUPITER
-# 1, 2 and 4 GPUs, the first without MPI). The outputs go to data/mpi/<CLUSTER>_<MODE>_<CASE>_<LOG2P>/, named
+# CLUSTER selects mpi/jobs/<CLUSTER>_scaling.sh. The job on one node also runs the points inside it (on JUPITER
+# 1, 2 and 4 GPUs, the first without MPI); the others run one point each, so a single point can be submitted again. The outputs go to data/mpi/<CLUSTER>_<MODE>_<CASE>_<LOG2P>/, named
 # <MODE>_*.out, where mpi/plot_strong.jl and mpi/plot_weak.jl find them. WATERLILY_RPN sets the ranks per node: on
 # JUPITER 4 (one per GPU), on its CPUs (jupiter_cpu) 256, on Snellius 64.
 set -euo pipefail
@@ -25,12 +25,11 @@ case "$CLUSTER" in jupiter) RPN=4 ;; jupiter_cpu) RPN=256 ;; *) RPN=64 ;; esac
 RPN="${WATERLILY_RPN:-$RPN}"  # ranks per node
 DIR="data/mpi/${CLUSTER}_${MODE}_${CASE}_${P}"; mkdir -p "$DIR"
 
-first=true
 for n in $NODES; do
     nps=$(( n * RPN ))
-    if $first; then  # the points inside the first node: 1, 2, 4, ... ranks
-        nps=""; np=1; while [ "$np" -lt $(( n * RPN )) ]; do nps="$nps $np"; np=$(( np * 2 )); done
-        nps="${nps# } $(( n * RPN ))"; first=false
+    if [ "$n" -eq 1 ]; then  # the points inside the node: 1, 2, 4, ... ranks
+        nps=""; np=1; while [ "$np" -lt "$RPN" ]; do nps="$nps $np"; np=$(( np * 2 )); done
+        nps="${nps# } $RPN"
     fi
     sbatch --nodes="$n" --job-name="wl-${CLUSTER}-${MODE}-${CASE}-${P}-N${n}" --output="$DIR/${MODE}_${CASE}_${P}_N${n}_%j.out" \
         "$@" "$JOB" "$MODE" "$CASE" "$P" "$STEPS" "$WARMUP" "$nps"

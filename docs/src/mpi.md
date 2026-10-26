@@ -68,7 +68,7 @@ bash mpi/jobs/submit.sh jupiter_cpu strong tgv 8 "1 2 4 8 16" -- -A <budget>
 bash mpi/jobs/submit.sh snellius weak tgv 6 "1 2 4 8"
 ```
 
-The first job also runs the points inside one node (on JUPITER 1, 2 and 4 GPUs, the first without MPI, which is the reference of the efficiency). Each GPU job prints the cores of the ranks of its first node, which should be those of one Grace CPU each (0-71, 72-143, ...). The outputs go to `data/mpi/<cluster>_<mode>_<case>_<log2p>/`, and the plot scripts read a whole directory and save the figure in it:
+The job on one node also runs the points inside it (on JUPITER 1, 2 and 4 GPUs, the first without MPI, which is the reference of the efficiency); the others run one point each, so a point that failed can be submitted again alone (`... weak tgv 6 "32" -- -A <budget>`). Each GPU job prints the cores of the ranks of its first node, which should be those of one Grace CPU each (0-71, 72-143, ...). The outputs go to `data/mpi/<cluster>_<mode>_<case>_<log2p>/`, and the plot scripts read a whole directory and save the figure in it:
 
 ```sh
 julia --project=plotting mpi/plot_strong.jl data/mpi/jupiter_strong_tgv_9
