@@ -89,12 +89,14 @@ function plot_strong(curves; out="strong_scaling.pdf")
                            linewidth = 2, size = (600, 450))))
 
     nps_all = sort(unique(p.np for pts in values(curves) for p in pts))
+    xt      = length(nps_all) <= 9 ? nps_all :   # past 9 points the labels overlap: every other power of 2
+              4 .^ (0:fld(ndigits(maximum(nps_all), base=2) - 1, 2))
 
     fig = Figure()
     ax = Axis(fig[1, 1];
         xscale = log2, yscale = log10,
         limits = ((1, maximum(nps_all)), nothing),
-        xticks = (nps_all, string.(nps_all)),
+        xticks = (xt, string.(xt)),
         yticks = LogTicks(IntegerTicks()),
         xminorticksvisible = false, yminorticksvisible = true,
         yminorticks = IntervalsBetween(9), yminorgridvisible = true,

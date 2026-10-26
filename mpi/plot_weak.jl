@@ -89,6 +89,7 @@ function plot_weak(curves; out="weak_scaling.pdf", refnp=1, inset=nothing)
     nps_all = sort(unique(p.np for pts in values(curves) for p in pts if p.np >= refnp))
     xt      = filter(ispow2, nps_all)   # ticks at powers of 2 only; intermediate np (192, 320,
                                         # ...) are plotted but unlabeled to avoid tick crowding
+    length(xt) > 9 && (xt = filter(n -> iseven(trailing_zeros(n) - trailing_zeros(xt[1])), xt))  # every other one past 9
 
     fig = Figure()
     ax = Axis(fig[1, 1];
