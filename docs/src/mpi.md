@@ -38,7 +38,7 @@ The cases are those of `src/cases.jl`: `tgv` is `tgv_periodic` (triply periodic,
 [ Info: MPI np=8  case=tgv  grid=256x256x256  local=128x128x128  100 steps  per_step=...ms  levels=7  mean_iters=1.0  cost=...ns/DOF/dt  backend=CuArray
 ```
 
-after a header with the WaterLily commit, the MPI library and the device of each rank. When every rank sees all the GPUs of its node, ImplicitGlobalGrid gives each node-local rank its own GPU; when the launcher binds one GPU per rank (Slurm `--gpus-per-task=1`, the default on JUPITER), each rank keeps the one it sees. Check in the header that the ranks of a node show different GPUs. To test the GPU code paths on a machine with one GPU, let several ranks share it: `CUDA_VISIBLE_DEVICES=0 mpiexec -n 2 ...` (the timings are then meaningless).
+after a header with the commits of WaterLily and of WaterLily-Benchmarks, the MPI library and the device of each rank. When every rank sees all the GPUs of its node, ImplicitGlobalGrid gives each node-local rank its own GPU; when the launcher binds one GPU per rank (Slurm `--gpus-per-task=1`, the default on JUPITER), each rank keeps the one it sees. Check in the header that the ranks of a node show different GPUs. To test the GPU code paths on a machine with one GPU, let several ranks share it: `CUDA_VISIBLE_DEVICES=0 mpiexec -n 2 ...` (the timings are then meaningless).
 
 ## Correctness of the multi-GPU TGV
 

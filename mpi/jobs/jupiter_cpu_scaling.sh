@@ -26,9 +26,8 @@ MODE="${1:?usage: jupiter_cpu_scaling.sh MODE CASE LOG2P [STEPS] [WARMUP] [NPS]}
 RPN="${WATERLILY_RPN:-256}"
 STEPS="${4:-100}"; WARMUP="${5:-20}"; NPS="${6:-$((RPN*SLURM_JOB_NUM_NODES))}"
 [ "$MODE" = weak ] && WEAK="--weak" || WEAK=""
-echo "WaterLily: $(git -C "$WATERLILY_DIR" log -1 --format='%h %s')"
 echo "$MODE scaling, $CASE log2p=$P, $STEPS steps after $WARMUP, ranks: $NPS ($RPN per node)"
-lscpu | grep -E "^NUMA node[0-9]"  # bind takes the cores of the Grace CPUs to be 0-71, 72-143, 144-215, 216-287
+lscpu | grep -E "^NUMA node[0-9]+ CPU\(s\): +[0-9]"  # bind takes the cores of the Grace CPUs to be 0-71, 72-143, 144-215, 216-287
 
 bind () { # ranks per node -> one core per rank: the same number of ranks on each Grace CPU, in rank order, spread evenly over its 72 cores
     local tpn=$1 q=$(( ($1 + 3) / 4 )) r cores=()
@@ -42,5 +41,5 @@ for np in $NPS; do
     serial=""; [ "$np" -eq 1 ] && serial="--serial"
     srun $(bind "$tpn") -N "$nodes" -n "$np" --ntasks-per-node="$tpn" julia --project=mpi/cpu -t 1 mpi/scaling.jl \
         --case="$CASE" --log2p="$P" $WEAK --backend=Array --steps="$STEPS" --warmup="$WARMUP" $serial 2>&1 \
-        | grep -E "Info|MPI:|Warn|ERROR" || echo "[ FAILED: $CASE np=$np ]"
+        | grep -E "Info|^WaterLily|MPI:|Warn|ERROR" || echo "[ FAILED: $CASE np=$np ]"
 done

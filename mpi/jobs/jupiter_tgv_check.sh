@@ -30,7 +30,6 @@ source mpi/jobs/jupiter_env.sh  # before set -u: module functions may read unset
 set -uo pipefail
 P="${1:-7}"; STEPS="${2:-200}"; CHECK="${3:-10}"
 DIR="data/mpi/jupiter_tgv_check_${SLURM_JOB_ID}"; mkdir -p "$DIR"
-echo "WaterLily: $(git -C "$WATERLILY_DIR" log -1 --format='%h %s')   WaterLily-Benchmarks: $(git log -1 --format=%h)"
 echo "TGV log2p=$P, $STEPS steps, diagnostics every $CHECK steps -> $DIR"
 
 run () { # name, srun options..., then -- and scaling.jl options

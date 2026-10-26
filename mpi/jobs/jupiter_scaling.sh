@@ -23,7 +23,7 @@ set -uo pipefail
 MODE="${1:?usage: jupiter_scaling.sh MODE CASE LOG2P [STEPS] [WARMUP] [NPS]}"; CASE="${2:?missing CASE}"; P="${3:?missing LOG2P}"
 STEPS="${4:-100}"; WARMUP="${5:-20}"; NPS="${6:-$((4*SLURM_JOB_NUM_NODES))}"
 [ "$MODE" = weak ] && WEAK="--weak" || WEAK=""
-echo "WaterLily: $(git -C "$WATERLILY_DIR" log -1 --format='%h %s')   IGG_CUDAAWARE_MPI=$IGG_CUDAAWARE_MPI"
+echo "IGG_CUDAAWARE_MPI=$IGG_CUDAAWARE_MPI"  # each run prints the WaterLily commit (there is no git after module purge)
 echo "$MODE scaling, $CASE log2p=$P, $STEPS steps after $WARMUP, GPUs: $NPS"
 # The cores of the ranks of one node: each rank should get the 72 cores of one Grace CPU (0-71, 72-143, ...)
 srun -N 1 -n 4 bash -c 'echo "  rank $SLURM_PROCID: cores$(taskset -cp $$ | cut -d: -f2)"' | sort -k2n
@@ -34,5 +34,5 @@ for np in $NPS; do
     serial=""; [ "$np" -eq 1 ] && serial="--serial"
     srun -N "$nodes" -n "$np" julia --project=mpi -t 4 mpi/scaling.jl --case="$CASE" --log2p="$P" $WEAK \
         --backend=CuArray --steps="$STEPS" --warmup="$WARMUP" $serial 2>&1 \
-        | grep -E "Info|MPI:|Warn|ERROR" || echo "[ FAILED: $CASE np=$np ]"
+        | grep -E "Info|^WaterLily|MPI:|Warn|ERROR" || echo "[ FAILED: $CASE np=$np ]"
 done
