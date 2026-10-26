@@ -26,7 +26,7 @@ isdir(wl_dir) || error("set WATERLILY_DIR to a WaterLily.jl clone (branch mpi-ig
 branch = readchomp(`git -C $wl_dir rev-parse --abbrev-ref HEAD`)
 @info "WaterLily.jl at $wl_dir: $(readchomp(`git -C $wl_dir log -1 --format="%h %s"`)) ($branch)"
 branch == "mpi-igg" || @warn "WaterLily.jl is on branch $branch, not mpi-igg"
-Pkg.develop(path=wl_dir)
+Pkg.develop(path=wl_dir)  # Julia >= 1.12 adds the path to mpi/Project.toml ([sources]): local, not to commit
 Pkg.instantiate()
 
 # Preferences before anything loads MPI.jl or CUDA.jl: they compile against the libraries they are bound to
@@ -38,7 +38,8 @@ if arg("system-mpi", "true") == "true"
     MPIPreferences.use_system_binary(; abi=arg("mpi-abi", psmpi ? "MPICH" : nothing))
 end
 if any(==("--cuda-local"), ARGS)  # what CUDA.set_runtime_version!(local_toolkit=true) sets, without loading CUDA.jl:
-    # loaded with its artifacts first, CUDA.jl mixes their libraries with the module's (undefined symbols in libcublas)
+    # loaded with its artifacts first, CUDA.jl mixes their libraries with the module's (undefined symbols in libcublas).
+    # The two packages are extras of mpi/Project.toml, so that setting their preferences does not add them there.
     for (name, uuid) in ("CUDA_Runtime_jll" => "76a88914-d11a-5bdc-97e0-2f5a05c973a2",
                          "CUDA_Compiler_jll" => "d1e2174e-dfdc-576e-b43e-73b79eb1aca8")
         set_preferences!((UUID(uuid), name), "local" => "true"; force=true)
