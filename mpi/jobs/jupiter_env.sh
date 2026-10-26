@@ -17,6 +17,7 @@ export JULIA_CUDA_MEMORY_POOL=none  # CUDA-aware MPI cannot pass memory of CUDA.
 # MPI.jl sets UCX_ERROR_SIGNALS too, but only after the MPI library has loaded UCX, which has then read its settings.
 export PSP_SIGSEGV=0
 export UCX_ERROR_SIGNALS=SIGILL,SIGBUS,SIGFPE
+export UCX_WARN_UNUSED_ENV_VARS=n  # MPI.jl sets UCX_MEMTYPE_CACHE, which UCX 1.19 no longer has: one warning per rank
 # srun does not take --cpus-per-task from the allocation: pass it on, or the Julia threads of a rank share one core
 if [ -n "${SLURM_CPUS_PER_TASK:-}" ]; then export SRUN_CPUS_PER_TASK="$SLURM_CPUS_PER_TASK"; fi
 
