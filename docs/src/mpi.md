@@ -52,7 +52,7 @@ What to expect, from the same check of a `64^3` TGV over 100 steps on one laptop
 - With more ranks, the diagnostics differ slightly from the serial run (largest relative difference of the kinetic energy about `4e-4` on 2 and 4 ranks): the halo is one cell wide, so at the faces between ranks the convection term uses the one-sided form of the domain boundaries.
 - GPU and CPU runs with the same decomposition differ by FP32 round-off (about `3e-5`).
 
-On GPUs every halo of the solver (velocity, pressure, multigrid levels) goes through ImplicitGlobalGrid on device memory, CUDA-aware with `IGG_CUDAAWARE_MPI=1`. Only `ForwardDiff.Dual` and `Bool` arrays still copy each component to a host buffer and back.
+On GPUs every halo stays in device memory. The halos of the solver (velocity, pressure, multigrid levels) go through ImplicitGlobalGrid, CUDA-aware with `IGG_CUDAAWARE_MPI=1`; `ForwardDiff.Dual` and `Bool` arrays, which ImplicitGlobalGrid does not take, go through WaterLily's own `MPI.Sendrecv!` on device buffers, so they need a CUDA-aware MPI.
 
 ## Scaling curves
 
