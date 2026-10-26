@@ -19,7 +19,7 @@ source mpi/jobs/jupiter_env.sh          # the modules of the jobs, and WATERLILY
 julia mpi/setup.jl --cuda-local         # GPUs: KernelAbstractions backend, CUDA.jl on the CUDA module
 ```
 
-On a CPU cluster use `julia mpi/setup.jl --backend=SIMD` (one thread per rank). `setup.jl` binds MPI.jl to the MPI library of the loaded module, so run it again whenever the modules change; on a laptop without an MPI module, `--system-mpi=false` keeps MPI.jl's own MPICH. The backend preference is fixed per environment: GPU runs need `KernelAbstractions`, and `scaling.jl` stops otherwise.
+`jupiter_env.sh` takes Julia from juliaup (`~/.juliaup`), loads GCC, ParaStationMPI (or `$WATERLILY_MPI`, e.g. `OpenMPI`) and CUDA, and keeps `JULIA_DEPOT_PATH` and `WATERLILY_DIR` when they are set (by default both go under `$PROJECT/$USER`). On a CPU cluster use `julia mpi/setup.jl --backend=SIMD` (one thread per rank). `setup.jl` binds MPI.jl to the MPI library of the loaded module, so run it again whenever the modules change; on a laptop without an MPI module, `--system-mpi=false` keeps MPI.jl's own MPICH. The backend preference is fixed per environment: GPU runs need `KernelAbstractions`, and `scaling.jl` stops otherwise.
 
 ## Running `scaling.jl`
 

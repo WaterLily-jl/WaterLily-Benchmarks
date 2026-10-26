@@ -21,6 +21,7 @@
 # the 8-GPU and 8-CPU runs use the same decomposition and differ by FP32 round-off.
 
 cd "$SLURM_SUBMIT_DIR"
+ulimit -c 0  # no core dumps: one crashed rank can write tens of GB
 source mpi/jobs/jupiter_env.sh  # before set -u: module functions may read unset variables
 set -uo pipefail
 P="${1:-7}"; STEPS="${2:-200}"; CHECK="${3:-10}"

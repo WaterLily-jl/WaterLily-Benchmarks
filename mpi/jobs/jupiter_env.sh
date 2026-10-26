@@ -3,16 +3,15 @@
 # Source it on the login node before `julia mpi/setup.jl --cuda-local`, and the jobs source it again: MPI.jl is
 # bound to the libmpi loaded here, so it has to be the same in both.
 #
-# Module names follow the JSC documentation (https://apps.fz-juelich.de/jsc/hps/jupiter/), where ParaStationMPI
-# and OpenMPI are both CUDA-aware. Check them before the first run, for instance with
-#     module avail; module spider ParaStationMPI; ml show MPI-settings
-# and pass your budget to sbatch (-A <budget>).
+# Julia comes from juliaup (~/.juliaup/bin), not from the Julia module. The MPI modules show once a compiler is
+# loaded (`ml GCC; ml avail`); ParaStationMPI and OpenMPI are both CUDA-aware on JUPITER, and WATERLILY_MPI picks
+# one (ParaStationMPI by default; run setup.jl again after changing it). Pass your budget to sbatch (-A <budget>).
 
 module purge                    # keeps the (sticky) Stages module; --force would drop it too
-module load GCC ParaStationMPI
-module load MPI-settings/CUDA   # CUDA-aware settings of the MPI module
-module load CUDA
-module load Julia               # WaterLily mpi-igg needs Julia >= 1.11; juliaup works too (put it first in PATH)
+module load GCC "${WATERLILY_MPI:-ParaStationMPI}" CUDA
+export PATH="$HOME/.juliaup/bin:$PATH"
+export PSP_CUDA=1               # ParaStationMPI takes device buffers only with it (OpenMPI ignores it)
+export UCX_CUDA_COPY_DMABUF=no  # UCX 1.19 has a GPU-memory registration issue on JUPITER
 
 # The Julia depot needs a few GB and compute nodes have no internet: keep it in the project file system
 # $PROJECT is set by `jutil env activate -p <project>`; without it the depot and the clone default to $HOME

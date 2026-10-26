@@ -16,6 +16,7 @@
 # mpi/jobs/submit.sh submits a whole curve, one job per node count.
 
 cd "$SLURM_SUBMIT_DIR"
+ulimit -c 0  # no core dumps: one crashed rank can write tens of GB
 source mpi/jobs/jupiter_env.sh  # before set -u: module functions may read unset variables
 set -uo pipefail
 MODE="${1:?usage: jupiter_scaling.sh MODE CASE LOG2P [STEPS] [WARMUP] [NPS]}"; CASE="${2:?missing CASE}"; P="${3:?missing LOG2P}"
