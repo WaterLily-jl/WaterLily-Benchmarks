@@ -15,6 +15,8 @@
 #
 #   sbatch -A <budget> mpi/jobs/jupiter_tgv_check.sh [LOG2P=7] [STEPS=200] [CHECK=10]
 #
+# It fits in the develbooster reservation (add --reservation=develbooster: at most 4 nodes and 2 h per job).
+#
 # Expected (see docs/src/mpi.md): MPI on 1 GPU and the host-staged 8-GPU run are identical to the serial and
 # CUDA-aware runs that they repeat. With more ranks, the convection term takes its one-sided boundary form at the
 # rank faces (the halo is one cell wide), so the diagnostics differ slightly from the serial run (~1e-4 to 1e-3);

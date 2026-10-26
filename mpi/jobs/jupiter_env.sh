@@ -13,6 +13,8 @@ module load GCC "${WATERLILY_MPI:-ParaStationMPI}" CUDA
 command -v julia >/dev/null || echo "jupiter_env.sh: no julia in PATH, install juliaup" >&2
 export UCX_CUDA_COPY_DMABUF=no  # UCX 1.19 has a GPU-memory registration issue on JUPITER
 export JULIA_CUDA_MEMORY_POOL=none  # CUDA-aware MPI cannot pass memory of CUDA.jl's pool (MPI.jl known issues)
+# srun does not take --cpus-per-task from the allocation: pass it on, or the Julia threads of a rank share one core
+if [ -n "${SLURM_CPUS_PER_TASK:-}" ]; then export SRUN_CPUS_PER_TASK="$SLURM_CPUS_PER_TASK"; fi
 
 # The Julia depot needs a few GB and compute nodes have no internet: keep it in the project file system
 # $PROJECT is set by `jutil env activate -p <project>`; without it the depot and the clone default to $HOME
