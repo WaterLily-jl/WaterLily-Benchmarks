@@ -5,6 +5,7 @@
 #SBATCH --ntasks-per-node=4
 #SBATCH --cpus-per-task=72
 #SBATCH --gpus-per-task=1
+#SBATCH --gres=gpu:4  # with --gpus-per-task, or Slurm rejects the GRES it adds by default
 #SBATCH --time=00:45:00
 #SBATCH --output=wl-tgv-check-%j.out
 
