@@ -13,7 +13,10 @@ module load GCC "${WATERLILY_MPI:-ParaStationMPI}" CUDA
 command -v julia >/dev/null || echo "jupiter_env.sh: no julia in PATH, install juliaup" >&2
 export UCX_CUDA_COPY_DMABUF=no  # UCX 1.19 has a GPU-memory registration issue on JUPITER
 export JULIA_CUDA_MEMORY_POOL=none  # CUDA-aware MPI cannot pass memory of CUDA.jl's pool (MPI.jl known issues)
-export PSP_SIGSEGV=0  # pscom exits on SIGSEGV, which Julia raises on purpose to stop its threads for the GC
+# Julia raises SIGSEGV on purpose to stop its threads for the GC: neither pscom nor UCX may take it as an error.
+# MPI.jl sets UCX_ERROR_SIGNALS too, but only after the MPI library has loaded UCX, which has then read its settings.
+export PSP_SIGSEGV=0
+export UCX_ERROR_SIGNALS=SIGILL,SIGBUS,SIGFPE
 # srun does not take --cpus-per-task from the allocation: pass it on, or the Julia threads of a rank share one core
 if [ -n "${SLURM_CPUS_PER_TASK:-}" ]; then export SRUN_CPUS_PER_TASK="$SLURM_CPUS_PER_TASK"; fi
 
