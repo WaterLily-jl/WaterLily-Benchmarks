@@ -41,5 +41,5 @@ for np in $NPS; do
     serial=""; [ "$np" -eq 1 ] && serial="--serial"
     srun $(bind "$tpn") -N "$nodes" -n "$np" --ntasks-per-node="$tpn" julia --project=mpi/cpu -t 1 mpi/scaling.jl \
         --case="$CASE" --log2p="$P" $WEAK --backend=Array --steps="$STEPS" --warmup="$WARMUP" $serial 2>&1 \
-        | grep -E "Info|^WaterLily|MPI:|Warn|ERROR" || echo "[ FAILED: $CASE np=$np ]"
+        | grep -E "Info|^WaterLily|MPI:|Warn|ERROR|[Ee]rror|srun:|signal|[Kk]illed" || echo "[ FAILED: $CASE np=$np ]"
 done

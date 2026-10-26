@@ -38,7 +38,7 @@ run () { # name, srun options..., then -- and scaling.jl options
     echo; echo "=== $name: srun ${opts[*]} ... $*"
     srun "${opts[@]}" julia --project=mpi -t 4 mpi/scaling.jl --case=tgv --log2p="$P" \
         --steps="$STEPS" --warmup=0 --check="$CHECK" --out="$DIR/$name.csv" "$@" 2>&1 | tee "$DIR/$name.log" \
-        | grep -E "Info|WaterLily|MPI:|rank|Warn|ERROR" || echo "[ FAILED: $name ]"
+        | grep -E "Info|WaterLily|MPI:|rank|Warn|ERROR|[Ee]rror|srun:|signal|[Kk]illed" || echo "[ FAILED: $name ]"
 }
 
 run gpu_serial            -N 1 -n 1 -- --backend=CuArray --serial
