@@ -15,7 +15,8 @@
 #   2. the TGV 512^3 itself, timed, on 4 and 8 GPUs;
 #   3. the TGV 256^3 on 8 GPUs with --check, compared with mpi/check.jl: the fused runs must be identical.
 # Then the same with CUDA-aware MPI (device buffers) and IGG_FUSED=2 on one node, where NVLink moves large faces
-# about twice as fast as host buffers. Each run writes to $OUT (default trace_ab/), one file per run.
+# about twice as fast as host buffers. Each run writes to $OUT (default trace_ab/), one file per run. MODES (default
+# "0 1 2") picks the IGG_FUSED values to run, AWARE=0 skips the CUDA-aware runs.
 # Submit from the repository root, with WaterLily on 23775aa (its Poisson iterations call update_halo!) and the
 # fork on halo-fused developed into mpi/:
 #
@@ -34,7 +35,7 @@ srun -N 1 -n 1 julia --project=mpi -e 'using Pkg; Pkg.precompile(); import Impli
 trace() { local o=$1; shift; srun -N $1 -n $2 julia --project=mpi mpi/halo_trace.jl "${@:3}" > "$OUT/$o.txt" 2>&1 || echo "[ FAILED: $o ]"; }
 tgv() { local o=$1; shift; srun -N $1 -n $2 julia --project=mpi -t 4 mpi/scaling.jl --case=tgv --backend=CuArray "${@:3}" > "$OUT/$o.txt" 2>&1 || echo "[ FAILED: $o ]"; }
 
-for f in 0 1 2; do
+for f in ${MODES:-0 1 2}; do
     export IGG_FUSED=$f
     trace n4_64_f$f 1 4 64 1 CuArray;     trace n4_512_f$f 1 4 512 1 CuArray
     trace n8_64_f$f 2 8 64 1 CuArray;     trace n8_512_f$f 2 8 512 1 CuArray;  trace n8_512_u_f$f 2 8 512 3 CuArray
@@ -43,8 +44,9 @@ for f in 0 1 2; do
     tgv check_np8_f$f 2 8 --log2p=8 --steps=50 --warmup=0 --check=10 --out="$OUT/check_np8_f$f.csv"
     grep -h "Info: MPI np" "$OUT/tgv_np4_f$f.txt" "$OUT/tgv_np8_f$f.txt"
 done
-julia mpi/check.jl "$OUT/check_np8_f0.csv" "$OUT/check_np8_f1.csv" "$OUT/check_np8_f2.csv"
+[ -f "$OUT/check_np8_f0.csv" ] && julia mpi/check.jl "$OUT/check_np8_f0.csv" $(for f in ${MODES:-0 1 2}; do [ "$f" != 0 ] && echo "$OUT/check_np8_f$f.csv"; done)
 
+[ "${AWARE:-1}" = 0 ] && exit 0
 export IGG_CUDAAWARE_MPI=1 IGG_FUSED=2
 trace n4_512_aware_f2 1 4 512 1 CuArray
 tgv tgv_np4_aware_f2 1 4 --log2p=9 --steps=100 --warmup=20
