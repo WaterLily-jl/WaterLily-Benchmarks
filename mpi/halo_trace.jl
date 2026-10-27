@@ -9,6 +9,8 @@
 # a rank waits in `wait_recv` for its neighbours' `t_first_isend`, and `t_recv_done` minus the latest `t_first_isend`
 # is what the transfer itself took. With CUDA arrays, CUDA.jl's implicit stream synchronization is off, as in
 # WaterLily since 12c339c (OWNERSYNC=1 turns it back on). IGG_CUDAAWARE_MPI=1 passes device buffers to MPI.
+# IGG_FUSED=1 or 2 (fork branch halo-fused) times the fused halo updates of CUDA arrays instead: one pack kernel, one
+# wait and one unpack kernel per round of messages, one round per dimension (1) or for all of them (2).
 #
 # The bare exchange then times the MPI calls alone, in update_halo!'s order (receives from both neighbours of a
 # dimension, sends to both, wait), with buffers of the face sizes (all fields in one message): per dimension and for
@@ -41,8 +43,9 @@ ncalls = 1000
 t = @elapsed (calls(ncalls); sync(); MPI.Barrier(comm))
 if me == 0
     host = gethostname()
-    @printf("update_halo! of %d %s field(s) of %s, split %s, %d ranks (rank 0 on %s), IGG_CUDAAWARE_MPI=%s, OWNERSYNC=%d, BARRIER=%d: %.1f us per call (wall time, barriers included)\n",
-            nfields, backend, join(nxyz, "x"), join(mpidims, "x"), np, host, get(ENV, "IGG_CUDAAWARE_MPI", ""), ownersync, barrier, 1e6t / ncalls)
+    @printf("update_halo! of %d %s field(s) of %s, split %s, %d ranks (rank 0 on %s), IGG_CUDAAWARE_MPI=%s, IGG_FUSED=%s, OWNERSYNC=%d, BARRIER=%d: %.1f us per call (wall time, barriers included)\n",
+            nfields, backend, join(nxyz, "x"), join(mpidims, "x"), np, host, get(ENV, "IGG_CUDAAWARE_MPI", ""), get(ENV, "IGG_FUSED", "0"),
+            ownersync, barrier, 1e6t / ncalls)
 end
 halo_trace(byrank=np <= 16)
 
