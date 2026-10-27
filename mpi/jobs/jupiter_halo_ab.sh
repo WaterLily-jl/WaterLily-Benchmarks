@@ -27,7 +27,9 @@ source mpi/jobs/jupiter_env.sh  # before set -u: module functions may read unset
 set -uo pipefail
 OUT="${OUT:-trace_ab}"; mkdir -p "$OUT"
 export IGG_TRACE=1
-julia --project=mpi -e 'import ImplicitGlobalGrid as G; isdefined(G, :FUSED) || error("ImplicitGlobalGrid in mpi/ is not the fork, branch halo-fused")' || exit 1
+# precompile on one rank, so that the first runs do not all compile at once
+srun -N 1 -n 1 julia --project=mpi -e 'using Pkg; Pkg.precompile(); import ImplicitGlobalGrid as G
+    isdefined(G, :FUSED) || error("ImplicitGlobalGrid in mpi/ is not the fork, branch halo-fused")' || exit 1
 
 trace() { local o=$1; shift; srun -N $1 -n $2 julia --project=mpi mpi/halo_trace.jl "${@:3}" > "$OUT/$o.txt" 2>&1 || echo "[ FAILED: $o ]"; }
 tgv() { local o=$1; shift; srun -N $1 -n $2 julia --project=mpi -t 4 mpi/scaling.jl --case=tgv --backend=CuArray "${@:3}" > "$OUT/$o.txt" 2>&1 || echo "[ FAILED: $o ]"; }
