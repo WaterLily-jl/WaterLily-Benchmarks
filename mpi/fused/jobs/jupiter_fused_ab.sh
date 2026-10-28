@@ -19,8 +19,8 @@
 # mpi/fused, built once on the login node from a clone of its own, so that the clone of mpi/ keeps its branch:
 #
 #   source mpi/jobs/jupiter_env.sh
-#   git clone -b mpi-igg-fused https://github.com/WaterLily-jl/WaterLily.jl $WL_BASE/WaterLily.jl-fused
-#   WATERLILY_DIR=$WL_BASE/WaterLily.jl-fused julia mpi/setup.jl --env=mpi/fused --cuda-local
+#   git clone -b mpi-igg-fused https://github.com/WaterLily-jl/WaterLily.jl $WATERLILY_DIR-fused  # next to the clone of mpi/
+#   WATERLILY_DIR=$WATERLILY_DIR-fused julia mpi/setup.jl --env=mpi/fused --cuda-local
 #
 # Then submit from the repository root:
 #

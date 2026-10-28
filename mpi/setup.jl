@@ -64,6 +64,7 @@ set_preferences!(UUID("ed894a53-35f9-47f1-b17f-85db9237eebd"), "backend" => back
 
 Pkg.precompile()
 Pkg.status()
-println("\nWaterLily backend: $backend. Smoke test (serial, then 2 ranks):")
+slurm = !isnothing(Sys.which("srun"))  # a cluster: MPI runs go through srun, on compute nodes
+println("\nWaterLily backend: $backend. Smoke test (serial, then 2 ranks$(slurm ? ", in an allocation (salloc)" : "")):")
 println("  julia --project=$(relpath(env)) mpi/scaling.jl --case=tgv --log2p=5 --steps=10 --warmup=5")
-println("  mpiexec -n 2 julia --project=$(relpath(env)) mpi/scaling.jl --case=tgv --log2p=5 --steps=10 --warmup=5")
+println("  $(slurm ? "srun" : "mpiexec") -n 2 julia --project=$(relpath(env)) mpi/scaling.jl --case=tgv --log2p=5 --steps=10 --warmup=5")
