@@ -56,7 +56,7 @@ end
 const use_mpi = !flag("serial") && any(k -> haskey(ENV, k),
     ("PMI_RANK", "PMI_SIZE", "OMPI_COMM_WORLD_RANK", "OMPI_COMM_WORLD_SIZE", "MPI_LOCALRANKID", "PMIX_RANK", "SLURM_PROCID"))
 
-# The GPU package is loaded before init_waterlily_mpi, so that ImplicitGlobalGrid selects one GPU per node-local rank
+# The GPU package is loaded before init_waterlily_mpi, so that each node-local rank selects its own GPU
 bname == "CuArray" && (using CUDA; CUDA.allowscalar(false))
 const mem = bname == "CuArray" ? CuArray : Array
 using WaterLily
@@ -143,7 +143,8 @@ sync() = bname == "CuArray" && CUDA.synchronize()
 barrier() = (sync(); use_mpi && MPI.Barrier(comm))
 for s in 1:Nwarmup; sim_step!(sim; remeasure=false); record!(s); end
 GC.gc(); barrier()
-const halo_timers = use_mpi && get(ENV, "IGG_TRACE", "0") != "0" && isdefined(ImplicitGlobalGrid, :halo_trace)
+const halo_timers = use_mpi && get(ENV, "IGG_TRACE", "0") != "0" && isdefined(ImplicitGlobalGrid, :halo_trace) &&
+                    ImplicitGlobalGrid.grid_is_initialized()  # not with WaterLily's own halos (branch mpi-igg-fused)
 halo_timers && ImplicitGlobalGrid.halo_trace_reset!()
 timed_steps() = (for s in Nwarmup+1:Nwarmup+Nsteps; sim_step!(sim; remeasure=false); record!(s); end; barrier())
 prof = nothing  # the CUDA.@profile summary (nothing under an external profiler)
@@ -191,4 +192,4 @@ if me == 0
     end
 end
 halo_timers && ImplicitGlobalGrid.halo_trace(per=Nsteps, unit="step")
-use_mpi && finalize_global_grid()
+use_mpi && ImplicitGlobalGrid.grid_is_initialized() && finalize_global_grid()
