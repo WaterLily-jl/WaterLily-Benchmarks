@@ -1,5 +1,6 @@
-# Strong and weak scaling, and correctness checks, of WaterLily's MPI extension (WaterLily.jl branch mpi-igg)
-# on CPUs and GPUs. Every rank runs this script; it detects an MPI launch (mpiexec/srun) and runs serial otherwise.
+# Strong and weak scaling, and correctness checks, of WaterLily's MPI extension (WaterLily.jl branch mpi-igg) on CPUs
+# and GPUs; with --project=mpi/fused, of branch mpi-igg-fused (its own halos, without ImplicitGlobalGrid). Every rank
+# runs this script; it detects an MPI launch (mpiexec/srun) and runs serial otherwise.
 #
 #   julia --project=mpi mpi/scaling.jl --case=tgv --log2p=7                           # serial CPU
 #   mpiexec -n 4 julia --project=mpi mpi/scaling.jl --case=tgv --log2p=7              # 4 ranks, CPU
@@ -22,7 +23,8 @@
 #                             its time (self samples, C frames such as MPI and UCX included)
 #
 # With IGG_TRACE=1 and the ImplicitGlobalGrid fork's timers (branch halo-trace), rank 0 also prints the time per step
-# that the timed steps spent in update_halo!, by array size, phase and dimension (ImplicitGlobalGrid.halo_trace).
+# that the timed steps spent in update_halo!, by array size, phase and dimension (ImplicitGlobalGrid.halo_trace; not
+# with mpi/fused).
 #
 # Rank 0 prints one line per run, which mpi/plot_strong.jl and mpi/plot_weak.jl read:
 #   [ Info: MPI np=8  case=tgv  grid=256x256x256  local=128x128x128  100 steps  per_step=12.3ms  ...
@@ -64,7 +66,9 @@ bname == "CuArray" && WaterLily.backend != "KernelAbstractions" &&
     error("GPU runs need the KernelAbstractions backend, this environment has \"$(WaterLily.backend)\": julia --project=mpi mpi/setup.jl --backend=KernelAbstractions")
 perdir = case == "tgv" ? (1, 2, 3) : ()
 if use_mpi
-    using ImplicitGlobalGrid, MPI
+    using MPI
+    # ImplicitGlobalGrid carries the halos of branch mpi-igg; the environment of branch mpi-igg-fused has none
+    isnothing(Base.identify_package("ImplicitGlobalGrid")) || @eval using ImplicitGlobalGrid
     MPI.Initialized() || MPI.Init()
     const nranks = MPI.Comm_size(MPI.COMM_WORLD)
     # weak scaling: a balanced topology, which the shape-aware decomposition of init_waterlily_mpi reproduces for cubic blocks
@@ -75,6 +79,7 @@ else
     const nranks, me, comm = 1, 0, nothing
     const gdims = local_dims = dims
 end
+const igg = use_mpi && @isdefined(ImplicitGlobalGrid) && ImplicitGlobalGrid.grid_is_initialized()  # the halos are its own
 
 # ── Cases (as in src/cases.jl, sized by the global grid) ───────────────────────────────────────────────
 function tgv(dims, gdims; Re=1600)
@@ -131,7 +136,9 @@ if me == 0
     println("WaterLily $(pkgversion(WaterLily)) ($(commit(pkgdir(WaterLily)))), WaterLily-Benchmarks $(first(commit(dirname(@__DIR__)), 7)), " *
             "Julia $VERSION, backend $(WaterLily.backend), $bname, $T")
     if use_mpi
-        println("MPI: $(first(split(MPI.Get_library_version(), '\n'))), has_cuda=$(MPI.has_cuda()), IGG_CUDAAWARE_MPI=$(get(ENV, "IGG_CUDAAWARE_MPI", "unset"))")
+        println("MPI: $(first(split(MPI.Get_library_version(), '\n'))), has_cuda=$(MPI.has_cuda()), " *
+                (igg ? "IGG_CUDAAWARE_MPI=$(get(ENV, "IGG_CUDAAWARE_MPI", "unset"))" :
+                       "WATERLILY_GPU_AWARE_MPI=$(get(ENV, "WATERLILY_GPU_AWARE_MPI", "unset"))"))
         bname == "CuArray" && length(unique(devices)) < nranks && @warn "$(length(unique(devices))) distinct GPUs for $nranks ranks"
     end
     foreach(((r, d),) -> println("  rank $(r-1): $d"), enumerate(devices))
@@ -143,8 +150,7 @@ sync() = bname == "CuArray" && CUDA.synchronize()
 barrier() = (sync(); use_mpi && MPI.Barrier(comm))
 for s in 1:Nwarmup; sim_step!(sim; remeasure=false); record!(s); end
 GC.gc(); barrier()
-const halo_timers = use_mpi && get(ENV, "IGG_TRACE", "0") != "0" && isdefined(ImplicitGlobalGrid, :halo_trace) &&
-                    ImplicitGlobalGrid.grid_is_initialized()  # not with WaterLily's own halos (branch mpi-igg-fused)
+const halo_timers = igg && get(ENV, "IGG_TRACE", "0") != "0" && isdefined(ImplicitGlobalGrid, :halo_trace)
 halo_timers && ImplicitGlobalGrid.halo_trace_reset!()
 timed_steps() = (for s in Nwarmup+1:Nwarmup+Nsteps; sim_step!(sim; remeasure=false); record!(s); end; barrier())
 prof = nothing  # the CUDA.@profile summary (nothing under an external profiler)
@@ -192,4 +198,4 @@ if me == 0
     end
 end
 halo_timers && ImplicitGlobalGrid.halo_trace(per=Nsteps, unit="step")
-use_mpi && ImplicitGlobalGrid.grid_is_initialized() && finalize_global_grid()
+igg && finalize_global_grid()

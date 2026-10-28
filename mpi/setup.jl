@@ -3,11 +3,14 @@
 #   source mpi/jobs/<cluster>_env.sh        # the MPI (and CUDA) modules used by the jobs
 #   julia mpi/setup.jl [--backend=KernelAbstractions|SIMD] [--env=DIR] [--cuda-local] [--system-mpi=false] [--mpi-abi=MPICH]
 #
-# It develops WaterLily from $WATERLILY_DIR (a WaterLily.jl clone on branch mpi-igg), binds MPI.jl to the MPI
-# library of the loaded module (MPIPreferences.use_system_binary), sets WaterLily's backend and precompiles.
+# It develops WaterLily from $WATERLILY_DIR (a WaterLily.jl clone on branch mpi-igg, or mpi-igg-fused for mpi/fused),
+# binds MPI.jl to the MPI library of the loaded module (MPIPreferences.use_system_binary), sets WaterLily's backend
+# and precompiles.
 #   --backend     KernelAbstractions (default) for GPUs and threaded CPUs, SIMD for one thread per rank on CPUs
-#   --env         build the environment in DIR instead of mpi/, with the packages of mpi/Project.toml: a second
-#                 environment with another backend, e.g. mpi/cpu with SIMD for the CPU runs on JUPITER
+#   --env         build the environment in DIR instead of mpi/: with the Project.toml of DIR when the repository has
+#                 one (mpi/fused, for WaterLily branch mpi-igg-fused, without ImplicitGlobalGrid), otherwise with the
+#                 packages of mpi/Project.toml (a second environment with another backend, e.g. mpi/cpu with SIMD for
+#                 the CPU runs on JUPITER)
 #   --cuda-local  use the CUDA toolkit of the loaded module instead of the CUDA_jll artifacts, so that CUDA.jl and a
 #                 CUDA-aware MPI use the same CUDA runtime
 #   --system-mpi=false  keep MPI.jl's own MPICH (a laptop without an MPI module)
@@ -21,18 +24,23 @@ backend in ("KernelAbstractions", "SIMD") || error("--backend must be KernelAbst
 ENV["JULIA_PKG_PRECOMPILE_AUTO"] = "0"  # precompile once, at the end, with the preferences below in place
 using Pkg, TOML
 const env = String(rstrip(abspath(arg("env", @__DIR__)), '/'))
-if env != @__DIR__  # the packages of mpi/Project.toml, without its [sources]: Pkg.develop below sets the path of WaterLily
+# The Project.toml of the environment when the repository has one (mpi/, mpi/fused), otherwise the packages of
+# mpi/Project.toml without its [sources] (Pkg.develop below sets the path of WaterLily)
+tracked(f) = success(pipeline(`git -C $(dirname(f)) ls-files --error-unmatch $(basename(f))`; stdout=devnull, stderr=devnull))
+if !tracked(joinpath(env, "Project.toml"))
     project = TOML.parsefile(joinpath(@__DIR__, "Project.toml")); delete!(project, "sources")
     mkpath(env); open(io -> TOML.print(io, project), joinpath(env, "Project.toml"), "w")
 end
 Pkg.activate(env)
 
-# WaterLily: the MPI extension lives on branch mpi-igg; print the commit so a wrong checkout shows up here, not in a job
+# WaterLily: the MPI extension lives on branch mpi-igg (mpi-igg-fused for mpi/fused); print the commit so a wrong
+# checkout shows up here, not in a job
+wl_branch = basename(env) == "fused" ? "mpi-igg-fused" : "mpi-igg"
 wl_dir = get(ENV, "WATERLILY_DIR", "")
-isdir(wl_dir) || error("set WATERLILY_DIR to a WaterLily.jl clone (branch mpi-igg)")
+isdir(wl_dir) || error("set WATERLILY_DIR to a WaterLily.jl clone (branch $wl_branch)")
 branch = readchomp(`git -C $wl_dir rev-parse --abbrev-ref HEAD`)
 @info "WaterLily.jl at $wl_dir: $(readchomp(`git -C $wl_dir log -1 --format="%h %s"`)) ($branch)"
-branch == "mpi-igg" || @warn "WaterLily.jl is on branch $branch, not mpi-igg"
+branch == wl_branch || @warn "WaterLily.jl is on branch $branch, not $wl_branch"
 Pkg.develop(path=wl_dir)  # Julia >= 1.12 adds the path to mpi/Project.toml ([sources]): local, not to commit
 Pkg.instantiate()
 
