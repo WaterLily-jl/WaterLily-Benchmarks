@@ -20,7 +20,9 @@
 # The first run of this job (2574387, before WaterLily f38c69a) found the branch at 47.0 ms on 8 GPUs against the
 # fork's 33.7 and 32.5, the same with the fork's host buffers (DIAG_BUFFERS=register, 47.2), and its host waiting
 # for the pack and unpack kernels: they searched the halo regions per element, 3 ms for a 258^3 halo of 26 regions.
-# The same runs with f38c69a (2578024, mpi/fused/data/diag/): the branch 31.8 ms, the fork 33.5 and 32.8.
+# The same runs with f38c69a (2578024, mpi/fused/data/diag/): the branch 31.8 ms, the fork 33.5 and 32.8. This job
+# with f38c69a (2578550): 8 GPUs the branch 32.4, without the overlap 32.9, device to device 37.0, the fork 34.4 and
+# 33.7; 4 GPUs the branch 54.9, the fork 56.9.
 # Each run writes to $OUT (default mpi/fused/data/diag_<job id>/, not tracked). Submit from the repository root, with mpi/ and
 # mpi/fused built as for mpi/jobs/jupiter_overlap_ab.sh and mpi/fused/jobs/jupiter_fused_ab.sh:
 #
