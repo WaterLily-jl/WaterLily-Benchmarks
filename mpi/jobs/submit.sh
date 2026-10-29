@@ -11,7 +11,10 @@
 # CLUSTER selects mpi/jobs/<CLUSTER>_scaling.sh. The job on one node also runs the points inside it (on JUPITER
 # 1, 2 and 4 GPUs, the first without MPI); the others run one point each, so a single point can be submitted again. The outputs go to data/mpi/<CLUSTER>_<MODE>_<CASE>_<LOG2P>/, named
 # <MODE>_*.out, where mpi/plot_strong.jl and mpi/plot_weak.jl find them. WATERLILY_RPN sets the ranks per node: on
-# JUPITER 4 (one per GPU), on its CPUs (jupiter_cpu) 256, on Snellius 64.
+# JUPITER 4 (one per GPU), on its CPUs (jupiter_cpu) 256, on Snellius 64. WATERLILY_ENV sets the Julia environment of
+# the runs (by default mpi, mpi/cpu for jupiter_cpu), and the outputs then go to <...>_<LOG2P>_<its last directory>/:
+#
+#   WATERLILY_ENV=mpi/fused bash mpi/jobs/submit.sh jupiter weak tgv 8 "1 2 4 8 16 32" -- -A <budget>  # ..._8_fused/
 set -euo pipefail
 CLUSTER="${1:?usage: submit.sh CLUSTER MODE CASE LOG2P \"NODES\" [STEPS] [WARMUP] [-- sbatch options]}"
 MODE="$2"; CASE="$3"; P="$4"; NODES="$5"; shift 5
@@ -23,7 +26,7 @@ case "$MODE" in strong|weak) ;; *) echo "MODE must be strong or weak" >&2; exit 
 JOB="mpi/jobs/${CLUSTER}_scaling.sh"; [ -f "$JOB" ] || { echo "no $JOB" >&2; exit 1; }
 case "$CLUSTER" in jupiter) RPN=4 ;; jupiter_cpu) RPN=256 ;; *) RPN=64 ;; esac
 RPN="${WATERLILY_RPN:-$RPN}"  # ranks per node
-DIR="data/mpi/${CLUSTER}_${MODE}_${CASE}_${P}"; mkdir -p "$DIR"
+DIR="data/mpi/${CLUSTER}_${MODE}_${CASE}_${P}${WATERLILY_ENV:+_$(basename "$WATERLILY_ENV")}"; mkdir -p "$DIR"
 
 for n in $NODES; do
     nps=$(( n * RPN ))

@@ -34,12 +34,12 @@ bind () { # ranks per node -> srun binding: an even stride over the 128 cores (e
 for np in $NPS; do
     args=(--case="$CASE" --log2p="$P" $WEAK --backend=Array --steps="$STEPS" --warmup="$WARMUP")
     if [ "$np" -eq 1 ]; then
-        julia --project=mpi -t 1 mpi/scaling.jl "${args[@]}" --serial 2>&1 | grep -E "Info|ERROR" || echo "[ FAILED: $CASE serial ]"
+        julia --project="${WATERLILY_ENV:-mpi}" -t 1 mpi/scaling.jl "${args[@]}" --serial 2>&1 | grep -E "Info|ERROR" || echo "[ FAILED: $CASE serial ]"
         continue
     fi
     nodes=$(( (np + RPN - 1) / RPN ))
     if [ "$nodes" -gt "$SLURM_JOB_NUM_NODES" ]; then echo "[ SKIPPED np=$np: needs $nodes nodes ]"; continue; fi
     tpn=$(( (np + nodes - 1) / nodes ))
-    srun --mpi=pmix $(bind "$tpn") -N "$nodes" -n "$np" --ntasks-per-node="$tpn" julia --project=mpi -t 1 \
+    srun --mpi=pmix $(bind "$tpn") -N "$nodes" -n "$np" --ntasks-per-node="$tpn" julia --project="${WATERLILY_ENV:-mpi}" -t 1 \
         mpi/scaling.jl "${args[@]}" 2>&1 | grep -E "Info|MPI:|ERROR" || echo "[ FAILED: $CASE np=$np ]"
 done

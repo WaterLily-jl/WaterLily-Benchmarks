@@ -39,7 +39,7 @@ for np in $NPS; do
     if [ "$nodes" -gt "$SLURM_JOB_NUM_NODES" ]; then echo "[ SKIPPED np=$np: needs $nodes nodes ]"; continue; fi
     tpn=$(( (np + nodes - 1) / nodes ))
     serial=""; [ "$np" -eq 1 ] && serial="--serial"
-    srun $(bind "$tpn") -N "$nodes" -n "$np" --ntasks-per-node="$tpn" julia --project=mpi/cpu -t 1 mpi/scaling.jl \
+    srun $(bind "$tpn") -N "$nodes" -n "$np" --ntasks-per-node="$tpn" julia --project="${WATERLILY_ENV:-mpi/cpu}" -t 1 mpi/scaling.jl \
         --case="$CASE" --log2p="$P" $WEAK --backend=Array --steps="$STEPS" --warmup="$WARMUP" $serial 2>&1 \
         | grep -E "Info|^WaterLily|MPI:|Warn|ERROR|[Ee]rror|srun:|signal|[Kk]illed" || echo "[ FAILED: $CASE np=$np ]"
 done
