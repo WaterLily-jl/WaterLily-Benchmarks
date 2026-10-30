@@ -4,6 +4,8 @@
 #   DIAG_BUFFERS=register  a Julia array registered with cuMemHostRegister, as the ImplicitGlobalGrid fork stages them
 #   DIAG_LAPS=1            time the phases of every halo (a copy of the branch's _halo! with timers); rank 0 prints
 #                          them per timed step, by array size
+#   DIAG_NVTX=1            mark every halo and its phases with NVTX ranges (domain "halo", the halo named by the size
+#                          and eltype of its array) for Nsight Systems (mpi/fused/jobs/jupiter_fused_nsys.sh)
 #
 #   srun -n 8 julia --project=mpi/fused -t 4 mpi/fused/halo_diag.jl --case=tgv --backend=CuArray --log2p=9
 using CUDA, MPI, WaterLily, Printf
@@ -23,6 +25,7 @@ end
 
 const phases = ("pack", "sync", "post", "work", "wait_recv", "unpack", "wait_send")
 const laps = Dict{Any,Vector{NTuple{7,Float64}}}()  # (size, eltype) => the phases of each call, in us
+get(ENV, "DIAG_LAPS", "0") == get(ENV, "DIAG_NVTX", "0") == "1" && error("DIAG_LAPS and DIAG_NVTX each redefine _halo!: set one")
 if get(ENV, "DIAG_LAPS", "0") == "1"
     @eval X function _halo!(work, a, h)
         t0 = time_ns()
@@ -41,6 +44,30 @@ if get(ENV, "DIAG_LAPS", "0") == "1"
         MPI.Waitall(h.sreq); t7 = time_ns()
         t = (t0, t1, t2, t3, t4, t5, t6, t7)
         push!(get!(() -> NTuple{7,Float64}[], Main.laps, (size(a), eltype(a))), ntuple(k -> (t[k+1] - t[k])/1e3, 7))
+        return nothing
+    end
+end
+if get(ENV, "DIAG_NVTX", "0") == "1"
+    # NVTX.jl comes with CUDA.jl, not as a dependency of the environment; its ranges are no-ops outside a profiler
+    const NVTX = Base.loaded_modules[Base.PkgId(Base.UUID("5da4648a-3479-48b8-97b9-01cb529c0a1f"), "NVTX")]
+    const halo_domain = NVTX.Domain("halo")
+    @eval X function _halo!(work, a, h)
+        Main.NVTX.@range "$(join(size(a), "x")) $(eltype(a))" domain=Main.halo_domain begin
+            Main.NVTX.@range "pack" domain=Main.halo_domain WaterLily.pack!(h.s, a, h.S)
+            Main.NVTX.@range "sync" domain=Main.halo_domain _sync(a)
+            Main.NVTX.@range "post" domain=Main.halo_domain begin
+                for (i, p) in enumerate(h.peers)
+                    MPI.Irecv!(view(h.rh, h.ranges[i]), _comm(), h.rreq[i]; source=p, tag=0)
+                end
+                for (i, p) in enumerate(h.peers)
+                    MPI.Isend(view(h.sh, h.ranges[i]), _comm(), h.sreq[i]; dest=p, tag=0)
+                end
+            end
+            Main.NVTX.@range "work" domain=Main.halo_domain work()
+            Main.NVTX.@range "wait_recv" domain=Main.halo_domain MPI.Waitall(h.rreq)
+            Main.NVTX.@range "unpack" domain=Main.halo_domain WaterLily.unpack!(a, h.r, h.R)
+            Main.NVTX.@range "wait_send" domain=Main.halo_domain MPI.Waitall(h.sreq)
+        end
         return nothing
     end
 end

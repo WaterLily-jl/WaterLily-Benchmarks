@@ -16,8 +16,11 @@
 #   nsys stats --report cuda_gpu_mem_time_sum,cuda_api_sum cuda_mpi_0.nsys-rep
 #
 # where the memory copies of the MPI library show up as peer-to-peer or device-to-device (direct) or as
-# device-to-host and host-to-device (staged).
+# device-to-host and host-to-device (staged). NVTX ranges mark each size and buffer kind of the ping-pong, and each
+# halo test, their payload the number of round trips or calls (mpi/fused/jobs/jupiter_fused_nsys.sh).
 using MPI, CUDA, ImplicitGlobalGrid, Printf
+# NVTX.jl comes with CUDA.jl, not as a dependency of the environment; its ranges are no-ops outside a profiler
+const NVTX = Base.loaded_modules[Base.PkgId(Base.UUID("5da4648a-3479-48b8-97b9-01cb529c0a1f"), "NVTX")]
 MPI.Init()
 const comm = MPI.COMM_WORLD
 const me, np = MPI.Comm_rank(comm), MPI.Comm_size(comm)
@@ -57,8 +60,9 @@ end
 me == 0 && @printf("%10s  %12s %10s  %12s %10s\n", "bytes", "device [us]", "[GB/s]", "host [us]", "[GB/s]")
 for bytes in (8, 1024, 32 * 1024, 256 * 1024, 2^20, 8 * 2^20, 64 * 2^20)
     n = clamp(2^28 ÷ bytes, 20, 2000)
-    td = pingpong(CUDA.zeros(UInt8, bytes), n)
-    th = pingpong(zeros(UInt8, bytes), n)
+    bd, bh = CUDA.zeros(UInt8, bytes), zeros(UInt8, bytes)
+    td = NVTX.@range "pingpong device $bytes B" payload=n+10 pingpong(bd, n)
+    th = NVTX.@range "pingpong host $bytes B" payload=n+10 pingpong(bh, n)
     me == 0 && @printf("%10d  %12.2f %10.2f  %12.2f %10.2f\n", bytes, 1e6td, bytes / td / 1e9, 1e6th, bytes / th / 1e9)
 end
 
@@ -85,9 +89,9 @@ end
 for (name, alloc) in (("device", CUDA.rand), ("host", rand))
     p = alloc(Float32, nxyz...); u = [alloc(Float32, nxyz...) for _ in 1:3]; CUDA.synchronize()
     s, r = [alloc(Float32, face) for _ in 1:2], [alloc(Float32, face) for _ in 1:2]; CUDA.synchronize()
-    tp = per_call(() -> update_halo!(p; dims=splitdims), 200)
-    tu = per_call(() -> update_halo!(u...; dims=splitdims), 200)
-    tm = per_call(() -> exchange!(s, r), 200)
+    tp = NVTX.@range "$name update_halo! scalar" payload=210 per_call(() -> update_halo!(p; dims=splitdims), 200)
+    tu = NVTX.@range "$name update_halo! velocity" payload=210 per_call(() -> update_halo!(u...; dims=splitdims), 200)
+    tm = NVTX.@range "$name MPI only" payload=210 per_call(() -> exchange!(s, r), 200)
     me == 0 && @printf("%-6s %s, split %s: update_halo! scalar %7.1f us, velocity %7.1f us; MPI only %7.1f us\n",
                        name, join(nxyz, "x"), join(mpidims, "x"), tp, tu, tm)
 end

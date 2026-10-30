@@ -156,7 +156,9 @@ timed_steps() = (for s in Nwarmup+1:Nwarmup+Nsteps; sim_step!(sim; remeasure=fal
 prof = nothing  # the CUDA.@profile summary (nothing under an external profiler)
 cpuprofile && (using Profile; Profile.init(n=10^7, delay=0.0005))
 t = @elapsed if profile
-    prof = @eval CUDA.@profile timed_steps()
+    # under Nsight Systems: start and stop its capture (nsys profile --capture-range=cudaProfilerApi), which CUDA.jl
+    # would not detect, since nsys collects nothing before the capture starts
+    prof = @eval CUDA.@profile external=$(haskey(ENV, "NSYS_PROFILING_SESSION_ID")) timed_steps()
 elseif cpuprofile
     @eval Profile.@profile timed_steps()
 else
