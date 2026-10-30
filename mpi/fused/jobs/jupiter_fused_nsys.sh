@@ -24,8 +24,9 @@
 # over NVLink (cuda_ipc), synchronizing a stream for each copy; staged, it sends the host memory the pack kernel wrote
 # and copies nothing. Refuted if the device run shows neither more CUDA calls nor memory copies than the staged one in
 # post, wait_recv and wait_send: then the cost is the MPI library's own (a rendezvous handshake, say).
-# Each run writes to $OUT (default mpi/fused/data/nsys_<job id>/, not tracked), the reports and their SQLite exports
-# as <run>_<rank>.nsys-rep and .sqlite; read them with
+# The time per step that scaling.jl prints is not one under nsys (it includes the start of the capture): the times are
+# those of the NVTX ranges. Each run writes to $OUT (default mpi/fused/data/nsys_<job id>/, not tracked), the reports
+# and their SQLite exports as <run>_<rank>.nsys-rep and .sqlite; read them with
 #
 #   python3 -I mpi/fused/nsys_halos.py --steps=5 $OUT/tgv_device_0.sqlite $OUT/tgv_device_4.sqlite
 #   nsys stats --report nvtx_sum,cuda_api_sum,cuda_gpu_mem_size_sum $OUT/pingpong_nodes_0.sqlite
@@ -49,9 +50,10 @@ srun -N 1 -n 1 julia --project=mpi/fused -e 'using Pkg; Pkg.precompile(); import
 srun -N 1 -n 1 julia --project=mpi -e 'using Pkg; Pkg.precompile()' || exit 1
 
 NSYS="--trace=cuda,nvtx --sample=none --cpuctxsw=none --export=sqlite --force-overwrite=true"
-ALL=""  # every CUDA API call, if this nsys has the option
-nsys profile --help 2>&1 | grep -q -- --cuda-trace-all-apis && ALL="--cuda-trace-all-apis=true"
+ALL=""  # every CUDA API call, if this nsys has the option (grep reads all of the help: with -q, nsys may get SIGPIPE)
+nsys profile --help 2>&1 | grep -- --cuda-trace-all-apis >/dev/null && ALL="--cuda-trace-all-apis=true"
 CAPTURE="--capture-range=cudaProfilerApi --capture-range-end=stop"  # the timed steps (scaling.jl --profile)
+echo "nsys profile $NSYS, all APIs: ${ALL:-not available}"
 export UCX_PROTO_INFO=y DIAG_NVTX=1
 
 # trace NAME NODES RANKS TRACED VARIABLES OPTIONS COMMAND...: one run on RANKS ranks of NODES nodes, the ranks TRACED
