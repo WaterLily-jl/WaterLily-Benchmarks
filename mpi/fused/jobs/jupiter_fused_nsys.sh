@@ -52,7 +52,7 @@ NSYS="--trace=cuda,nvtx --sample=none --cpuctxsw=none --export=sqlite --force-ov
 ALL=""  # every CUDA API call, if this nsys has the option
 nsys profile --help 2>&1 | grep -q -- --cuda-trace-all-apis && ALL="--cuda-trace-all-apis=true"
 CAPTURE="--capture-range=cudaProfilerApi --capture-range-end=stop"  # the timed steps (scaling.jl --profile)
-export UCX_PROTO_INFO=y DIAG_NVTX=1 JULIA_NVTX_CALLBACKS=gc  # gc: the garbage collections in the trace too
+export UCX_PROTO_INFO=y DIAG_NVTX=1
 
 # trace NAME NODES RANKS TRACED VARIABLES OPTIONS COMMAND...: one run on RANKS ranks of NODES nodes, the ranks TRACED
 # (separated by spaces) under `nsys profile OPTIONS`, with the comma-separated VARIABLES set
