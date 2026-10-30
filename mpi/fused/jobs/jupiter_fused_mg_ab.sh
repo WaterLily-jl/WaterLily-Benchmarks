@@ -20,9 +20,10 @@
 # BASE (default mpi/fused-f38c69a) and NEW (default mpi/fused) are environments like mpi/fused with WaterLily at
 # f38c69a and at d843529. Jobs that start later compile the clone of mpi/fused at whatever commit it then holds, so
 # while other jobs of mpi/fused wait in the queue, keep that clone where it is and build both, once, on a login node
-# after `source mpi/jobs/jupiter_env.sh` (for c in f38c69a d843529):
+# after `source mpi/jobs/jupiter_env.sh` (for c in f38c69a d843529; from the remote, which has every pushed commit, as
+# a clone of the clone has only its local branches):
 #
-#   git clone $WL_BASE/WaterLily.jl-fused $WL_BASE/WaterLily.jl-fused-$c
+#   git clone $(git -C $WL_BASE/WaterLily.jl-fused remote get-url origin) $WL_BASE/WaterLily.jl-fused-$c
 #   git -C $WL_BASE/WaterLily.jl-fused-$c checkout $c
 #   mkdir -p mpi/fused-$c && cp mpi/fused/{Project,Manifest,LocalPreferences}.toml mpi/fused-$c/
 #   julia --project=mpi/fused-$c -e "using Pkg; Pkg.develop(path=\"$WL_BASE/WaterLily.jl-fused-$c\")"
