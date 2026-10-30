@@ -15,6 +15,10 @@
 # the runs (by default mpi, mpi/cpu for jupiter_cpu), and the outputs then go to <...>_<LOG2P>_<its last directory>/:
 #
 #   WATERLILY_ENV=mpi/fused bash mpi/jobs/submit.sh jupiter weak tgv 8 "1 2 4 8 16 32" -- -A <budget>  # ..._8_fused/
+#
+# WATERLILY_TAG replaces that suffix, e.g. for ImplicitGlobalGrid's own halos in mpi/ (the fork does not fuse them):
+#
+#   WATERLILY_TAG=stock IGG_FUSED=0 bash mpi/jobs/submit.sh jupiter strong tgv 10 "1 2 4 8 16" -- -A <budget>  # ..._10_stock/
 set -euo pipefail
 CLUSTER="${1:?usage: submit.sh CLUSTER MODE CASE LOG2P \"NODES\" [STEPS] [WARMUP] [-- sbatch options]}"
 MODE="$2"; CASE="$3"; P="$4"; NODES="$5"; shift 5
@@ -26,7 +30,8 @@ case "$MODE" in strong|weak) ;; *) echo "MODE must be strong or weak" >&2; exit 
 JOB="mpi/jobs/${CLUSTER}_scaling.sh"; [ -f "$JOB" ] || { echo "no $JOB" >&2; exit 1; }
 case "$CLUSTER" in jupiter) RPN=4 ;; jupiter_cpu) RPN=256 ;; *) RPN=64 ;; esac
 RPN="${WATERLILY_RPN:-$RPN}"  # ranks per node
-DIR="data/mpi/${CLUSTER}_${MODE}_${CASE}_${P}${WATERLILY_ENV:+_$(basename "$WATERLILY_ENV")}"; mkdir -p "$DIR"
+TAG="${WATERLILY_TAG:-${WATERLILY_ENV:+$(basename "$WATERLILY_ENV")}}"  # the suffix of the output directory
+DIR="data/mpi/${CLUSTER}_${MODE}_${CASE}_${P}${TAG:+_$TAG}"; mkdir -p "$DIR"
 
 for n in $NODES; do
     nps=$(( n * RPN ))
