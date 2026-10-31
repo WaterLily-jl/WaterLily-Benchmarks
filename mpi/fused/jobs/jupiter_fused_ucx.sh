@@ -28,7 +28,7 @@
 #      device to device: which halos win which way, so the WATERLILY_GPU_AWARE_MPI threshold to pick.
 # UCX_RNDV_THRESH also moves the switch for host memory, hence the staged runs at each threshold; the first thing to
 # read is whether the protocol tables at the end moved the switch at all. The times compare within the job (PROJ is
-# what mpi/fused holds when the job starts, d843529 since 2026-10-31, not f38c69a of job 2583225). Each run writes to
+# what mpi/fused holds when the job starts, whose commit the job prints first). Each run writes to
 # $OUT (default mpi/fused/data/ucx_<job id>/, not tracked); the job ends with the tables. Submit from the repository
 # root, with mpi/ and mpi/fused built as for mpi/fused/jobs/jupiter_fused_diag.sh:
 #
