@@ -28,7 +28,7 @@
 #
 # Rank 0 prints one line per run, which mpi/plot_strong.jl and mpi/plot_weak.jl read:
 #   [ Info: MPI np=8  case=tgv  grid=256x256x256  local=128x128x128  100 steps  per_step=12.3ms  ...
-using StaticArrays, Printf, LibGit2
+using StaticArrays, Printf
 
 arg(key, default) = (i = findlast(a -> startswith(a, "--$key="), ARGS); isnothing(i) ? default : split(ARGS[i], "="; limit=2)[2])
 flag(key) = any(==("--$key"), ARGS) || arg(key, "0") in ("1", "true")
@@ -120,16 +120,7 @@ rows = NamedTuple[]
 record!(step) = (check > 0 && step % check == 0) && push!(rows, (; step, diagnostics(sim)...))
 
 # ── Header ─────────────────────────────────────────────────────────────────────────────────────────────
-# The commit of a clone, through Julia's libgit2: the compute nodes may have no git command (JUPITER, once the jobs
-# have purged the modules)
-commit(dir) = try
-    LibGit2.with(LibGit2.GitRepo(dir)) do repo
-        c = LibGit2.peel(LibGit2.GitCommit, LibGit2.head(repo))
-        "$(string(LibGit2.GitHash(c))[1:7]) $(first(split(LibGit2.message(c), '\n')))"
-    end
-catch
-    "unknown"
-end
+include("commit.jl")  # commit(dir): the commit of a clone
 devices = bname == "CuArray" ? "$(CUDA.name(CUDA.device())) [uuid $(string(CUDA.uuid(CUDA.device()))[1:8])]" : "CPU"
 devices = use_mpi ? MPI.gather(devices, comm) : [devices]
 if me == 0

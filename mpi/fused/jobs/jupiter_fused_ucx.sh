@@ -45,9 +45,9 @@ echo "UCX: $(command -v ucx_info >/dev/null && ucx_info -v | head -n 2 | tr '\n'
 command -v ucx_info >/dev/null && ucx_info -c | grep -iE 'RNDV|ZCOPY|PROTO_ENABLE|_TLS=|MEMTYPE'
 echo "UCX and ParaStation variables set:"; env | grep -E '^(UCX|PSP)_' | sort
 # precompile on one rank, so that the runs do not all compile at once; print the WaterLily commit of PROJ
-srun -N 1 -n 1 julia --project=$PROJ -e 'using Pkg; Pkg.precompile(); import WaterLily as W
+srun -N 1 -n 1 julia --project=$PROJ -e 'using Pkg; Pkg.precompile(); include("mpi/commit.jl"); import WaterLily as W
     isdefined(W, :_device_selectors) || error("WaterLily in $(dirname(Base.active_project())) is not on branch mpi-igg-fused")
-    println("$(relpath(dirname(Base.active_project()))): WaterLily ", readchomp(`git -C $(pkgdir(W)) log -1 --format="%h %s"`))' || exit 1
+    println("$(relpath(dirname(Base.active_project()))): WaterLily ", commit(pkgdir(W)))' || exit 1
 srun -N 1 -n 1 julia --project=mpi -e 'using Pkg; Pkg.precompile()' || exit 1
 
 # run NAME NODES RANKS THRESHOLD VARIABLES COMMAND...: one run on RANKS ranks of NODES nodes, UCX_RNDV_THRESH set to
