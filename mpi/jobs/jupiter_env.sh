@@ -10,6 +10,7 @@
 
 module purge                    # keeps the (sticky) Stages module; --force would drop it too
 module load GCC "${WATERLILY_MPI:-ParaStationMPI}" CUDA
+module load git  # the compute nodes have no git of their own, and the jobs print the commit of each environment
 command -v julia >/dev/null || echo "jupiter_env.sh: no julia in PATH, install juliaup" >&2
 export UCX_CUDA_COPY_DMABUF=no  # UCX 1.19 has a GPU-memory registration issue on JUPITER
 export JULIA_CUDA_MEMORY_POOL=none  # CUDA-aware MPI cannot pass memory of CUDA.jl's pool (MPI.jl known issues)

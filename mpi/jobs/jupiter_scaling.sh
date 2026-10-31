@@ -25,7 +25,7 @@ MODE="${1:?usage: jupiter_scaling.sh MODE CASE LOG2P [STEPS] [WARMUP] [NPS]}"; C
 STEPS="${4:-100}"; WARMUP="${5:-20}"; NPS="${6:-$((4*SLURM_JOB_NUM_NODES))}"
 [ "$MODE" = weak ] && WEAK="--weak" || WEAK=""
 ENV_DIR="${WATERLILY_ENV:-mpi}"
-echo "WATERLILY_ENV=$ENV_DIR IGG_CUDAAWARE_MPI=$IGG_CUDAAWARE_MPI IGG_FUSED=${IGG_FUSED:-0} WATERLILY_GPU_AWARE_MPI=${WATERLILY_GPU_AWARE_MPI:-unset} WATERLILY_OVERLAP_MIN=${WATERLILY_OVERLAP_MIN:-default}"  # each run prints the WaterLily commit (there is no git after module purge)
+echo "WATERLILY_ENV=$ENV_DIR IGG_CUDAAWARE_MPI=$IGG_CUDAAWARE_MPI IGG_FUSED=${IGG_FUSED:-0} WATERLILY_GPU_AWARE_MPI=${WATERLILY_GPU_AWARE_MPI:-unset} WATERLILY_OVERLAP_MIN=${WATERLILY_OVERLAP_MIN:-default}"  # each run prints the WaterLily commit
 echo "$MODE scaling, $CASE log2p=$P, $STEPS steps after $WARMUP, GPUs: $NPS"
 # The cores of the ranks of one node: each rank should get the 72 cores of one Grace CPU (0-71, 72-143, ...)
 srun -N 1 -n 4 bash -c 'echo "  rank $SLURM_PROCID: cores$(taskset -cp $$ | cut -d: -f2)"' | sort -k2n

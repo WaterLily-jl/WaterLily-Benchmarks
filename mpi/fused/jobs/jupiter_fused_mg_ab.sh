@@ -42,14 +42,14 @@ OUT="${OUT:-mpi/fused/data/mg_ab_$SLURM_JOB_ID}"; mkdir -p "$OUT"
 # precompile on one rank, so that the runs do not all compile at once; print the commit of each environment (the
 # last line of its output)
 commit() {
-    srun -N 1 -n 1 julia --project=$1 -e 'using Pkg; Pkg.precompile(); include("mpi/commit.jl"); import WaterLily as W
+    srun -N 1 -n 1 julia --project=$1 -e 'using Pkg; Pkg.precompile(); import WaterLily as W
         isdefined(W, :_device_selectors) || error("WaterLily in $(dirname(Base.active_project())) is not on branch mpi-igg-fused")
-        println(commit(pkgdir(W)))' | tail -n 1
+        println(readchomp(`git -C $(pkgdir(W)) log -1 --format="%h %s"`))' | tail -n 1
 }
 new=$(commit $NEW) || exit 1
 base=$(commit $BASE) || exit 1
 echo "new:  $NEW, WaterLily $new"; echo "base: $BASE, WaterLily $base"
-[ "$new" = unknown ] || [ "${new%% *}" != "${base%% *}" ] || { echo "$NEW and $BASE have the same WaterLily commit"; exit 1; }
+[ "${new%% *}" != "${base%% *}" ] || { echo "$NEW and $BASE have the same WaterLily commit"; exit 1; }
 
 TGV="--case=tgv --backend=CuArray --log2p=9 --steps=100 --warmup=20"
 # run NAME NODES ENVIRONMENT VARIABLES SCRIPT ARGS...: one run on the 4 GPUs of each node, the comma-separated

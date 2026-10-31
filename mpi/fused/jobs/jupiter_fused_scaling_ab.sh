@@ -65,16 +65,16 @@ ENVS=" $(for v in $VARIANTS; do echo ${v%%:*}; done | sort -u | tr '\n' ' ')"  #
 file() { echo ${1//[:=,]/_}; }  # file VARIANT: the variant in the names of the files
 # precompile on one rank, so that the runs do not all compile at once; print the WaterLily commit of each environment
 if [[ $ENVS == *" stock "* || $ENVS == *" fork "* ]]; then
-    srun -N 1 -n 1 julia --project=mpi -e 'using Pkg; Pkg.precompile(); include("mpi/commit.jl"); import ImplicitGlobalGrid as G, WaterLily as W
+    srun -N 1 -n 1 julia --project=mpi -e 'using Pkg; Pkg.precompile(); import ImplicitGlobalGrid as G, WaterLily as W
         isdefined(G, :update_halo_start!) || error("ImplicitGlobalGrid in mpi/ is not the fork, branch halo-fused")
         isdefined(W, :shell) || error("WaterLily in mpi/ is not on branch mpi-igg-overlap")
-        println("mpi/: WaterLily ", commit(pkgdir(W)))' || exit 1
+        println("mpi/: WaterLily ", readchomp(`git -C $(pkgdir(W)) log -1 --format="%h %s"`))' || exit 1
 fi
 for v in $ENVS; do
     [[ $v == fused* ]] || continue
-    srun -N 1 -n 1 julia --project=mpi/$v -e 'using Pkg; Pkg.precompile(); include("mpi/commit.jl"); import WaterLily as W
+    srun -N 1 -n 1 julia --project=mpi/$v -e 'using Pkg; Pkg.precompile(); import WaterLily as W
         isdefined(W, :_device_selectors) || error("WaterLily in $(dirname(Base.active_project())) is not on branch mpi-igg-fused")
-        println("$(relpath(dirname(Base.active_project()))): WaterLily ", commit(pkgdir(W)))' || exit 1
+        println("$(relpath(dirname(Base.active_project()))): WaterLily ", readchomp(`git -C $(pkgdir(W)) log -1 --format="%h %s"`))' || exit 1
 done
 
 # run VARIANT FILE NP ARGS...: one timed run of mpi/scaling.jl on NP GPUs, 4 per node
