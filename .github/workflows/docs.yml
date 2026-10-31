@@ -28,7 +28,7 @@ jobs:
           persist-credentials: false  # Documenter pushes with GITHUB_TOKEN
       - uses: julia-actions/setup-julia@v3
         with:
-          version: '1.11'  # as the benchmark action
+          version: '1'  # as the benchmark action
       - uses: julia-actions/cache@v3
       - name: Install the docs environment  # julia-docdeploy@v1 only instantiates it together with install-package
         run: julia --color=yes --project=docs -e 'using Pkg; Pkg.instantiate()'
