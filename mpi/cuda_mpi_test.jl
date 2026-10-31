@@ -58,7 +58,9 @@ function pingpong(buf, n)
     end
 end
 me == 0 && @printf("%10s  %12s %10s  %12s %10s\n", "bytes", "device [us]", "[GB/s]", "host [us]", "[GB/s]")
-for bytes in (8, 1024, 32 * 1024, 256 * 1024, 2^20, 8 * 2^20, 64 * 2^20)
+# the sizes of the ping-pong: PINGPONG_BYTES, separated by spaces (mpi/fused/jobs/jupiter_fused_ucx.sh)
+const pingpong_bytes = parse.(Int, split(get(ENV, "PINGPONG_BYTES", "8 1024 32768 262144 1048576 8388608 67108864")))
+for bytes in pingpong_bytes
     n = clamp(2^28 ÷ bytes, 20, 2000)
     bd, bh = CUDA.zeros(UInt8, bytes), zeros(UInt8, bytes)
     td = NVTX.@range "pingpong device $bytes B" payload=n+10 pingpong(bd, n)
