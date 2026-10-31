@@ -23,10 +23,10 @@
 # after `source mpi/jobs/jupiter_env.sh` (for c in f38c69a d843529; from the remote, which has every pushed commit, as
 # a clone of the clone has only its local branches):
 #
-#   git clone $(git -C $WL_BASE/WaterLily.jl-fused remote get-url origin) $WL_BASE/WaterLily.jl-fused-$c
-#   git -C $WL_BASE/WaterLily.jl-fused-$c checkout $c
+#   git clone $(git -C $WATERLILY_DIR-fused remote get-url origin) $WATERLILY_DIR-fused-$c
+#   git -C $WATERLILY_DIR-fused-$c checkout $c
 #   mkdir -p mpi/fused-$c && cp mpi/fused/{Project,Manifest,LocalPreferences}.toml mpi/fused-$c/
-#   julia --project=mpi/fused-$c -e "using Pkg; Pkg.develop(path=\"$WL_BASE/WaterLily.jl-fused-$c\")"
+#   julia --project=mpi/fused-$c -e "using Pkg; Pkg.develop(path=\"$WATERLILY_DIR-fused-$c\")"
 #
 # Each run writes to $OUT (default mpi/fused/data/mg_ab_<job id>/, not tracked); the job ends with a table of the
 # times and the halos per step. Submit from the repository root:

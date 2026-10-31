@@ -22,9 +22,9 @@ export UCX_WARN_UNUSED_ENV_VARS=n  # MPI.jl sets UCX_MEMTYPE_CACHE, which UCX 1.
 # srun does not take --cpus-per-task from the allocation: pass it on, or the Julia threads of a rank share one core
 if [ -n "${SLURM_CPUS_PER_TASK:-}" ]; then export SRUN_CPUS_PER_TASK="$SLURM_CPUS_PER_TASK"; fi
 
-# The Julia depot needs a few GB and compute nodes have no internet: keep it in the project file system
-# $PROJECT is set by `jutil env activate -p <project>`; without it the depot and the clone default to $HOME
-WL_BASE="${PROJECT:+$PROJECT/$USER}"; WL_BASE="${WL_BASE:-$HOME}"
+# The Julia depot needs a few GB and compute nodes have no internet: keep it, and the WaterLily clones, in the
+# project file system, by default next to this clone of WaterLily-Benchmarks (not in $HOME)
+WL_BASE="${WL_BASE:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)}"
 export JULIA_DEPOT_PATH="${JULIA_DEPOT_PATH:-$WL_BASE/julia_depot}"
 export WATERLILY_DIR="${WATERLILY_DIR:-$WL_BASE/WaterLily.jl}"  # WaterLily.jl clone, branch mpi-igg
 # ImplicitGlobalGrid stages the halos of GPU arrays through host memory (0), a cheap copy over the GH200's CPU-GPU
