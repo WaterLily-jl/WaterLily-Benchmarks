@@ -21,7 +21,7 @@ optionally followed by [`benchmark.sh` options](benchmarks.md) on the same line.
 | `base`, `head` | `master`, (required) | refs to compare, e.g. `head: pr-123` |
 | `args` | none | `benchmark.sh` arguments appended to the defaults `-b Array -t "1 2" -r 2`, a later value winning, e.g. `-c sphere -r 3`; restricted to `[A-Za-z0-9 ,._="-]`. With `-bs`, BiotSavartBCs.jl is checked out next to WaterLily, so its refs must exist on GitHub |
 | `force` | `true` | pass `-f` (skip the machine check), for shared runners |
-| `julia-version` | `1.11` | for `julia-actions/setup-julia` |
+| `julia-version` | `1`, the latest release | for `julia-actions/setup-julia` |
 | `harness-ref`, `harness-path` | the action's ref, `WaterLily-Benchmarks` | revision of this repository to run, and its checkout path |
 | `pr`, `label` | none | pull request to comment on, and the name of the comment |
 | `artifact` | `benchmark-results` | artifact with the JSON results and the report, uploaded also when a step fails; empty uploads nothing |

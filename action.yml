@@ -19,8 +19,8 @@ inputs:
     description: Pass -f (skip the machine check), for shared runners.
     default: "true"
   julia-version:
-    description: For julia-actions/setup-julia.
-    default: "1.11"
+    description: For julia-actions/setup-julia, where 1 is the latest release.
+    default: "1"
   harness-ref:
     description: WaterLily-Benchmarks ref to run. Defaults to this action's ref.
     default: ${{ github.action_ref }}
