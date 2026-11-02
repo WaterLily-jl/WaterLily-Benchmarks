@@ -29,20 +29,25 @@
 #   mkdir -p gpu/CUDA && cp Project.toml gpu/CUDA/ && julia --project=gpu/CUDA -e \
 #       'using Pkg; Pkg.develop(path=ENV["WATERLILY_DIR"]); Pkg.add("CUDA"); Pkg.update(); Pkg.precompile()' \
 #       && cp Project.toml gpu/CUDA/Project.base.toml
+#   julia --project=gpu/CUDA -e 'using CUDA; CUDA.versioninfo()'   # the runtime CUDA.jl picked (the job prints it too)
 #
-# The cores: one task of 72 CPUs is one Grace (NUMA domain 0, next to GPU 0, the one CUDA.jl takes); POCL_AFFINITY=1
-# pins each PoCL thread to a core of its own. Time: about 2 h of the SIMD core for the largest sizes, the rest minutes.
+# The cores: the node is the job's (--exclusive), and taskset keeps the runs on the 72 cores of the first Grace (0-71,
+# NUMA domain 0, next to GPU 0, the one CUDA.jl takes); POCL_AFFINITY=1 pins each PoCL thread to a core of its own.
+# CUDA.jl's memory pool stays on (jupiter_env.sh turns it off for CUDA-aware MPI). Time: about 2 h of the SIMD core
+# for the largest sizes, the rest minutes.
 
 cd "$SLURM_SUBMIT_DIR"
 WL_BASE="${WL_BASE:-$(cd "$SLURM_SUBMIT_DIR/.." && pwd)}"
 export WATERLILY_DIR="${WATERLILY_DIR:-$WL_BASE/WaterLily.jl-master}"
 source mpi/jobs/jupiter_env.sh       # modules, the depot next to this clone
+unset JULIA_CUDA_MEMORY_POOL         # one GPU, no MPI: CUDA.jl's default pool, as anyone running WaterLily has it
 export JULIA_PKG_OFFLINE=true        # the environments were prepared on the login node
 export POCL_AFFINITY=1               # pin PoCL's threads (KA 0.10)
 lscpu | grep -E "^NUMA node[0-9]+ CPU\(s\)"; taskset -cp $$; nvidia-smi -L
 echo "WaterLily $(git -C "$WATERLILY_DIR" describe --tags) in $WATERLILY_DIR, $(julia --version)"
+julia --project=gpu/CUDA -e 'using CUDA; CUDA.versioninfo()'
 
 DEFAULTS=(-b "Array CuArray" -t "1 72" -w "v1.11.0" -u false -dev "" -f
           -c "tgv sphere cylinder" -p "6,7,8,9 3,4,5,6 4,5,6,7" -s 100 -ft Float32 -dd "data/jupiter_single_device")
-./benchmark.sh "${DEFAULTS[@]}" "$@"
+taskset -c 0-71 ./benchmark.sh "${DEFAULTS[@]}" "$@"
 julia --project=. compare.jl --data_dir=data/jupiter_single_device --patterns="tgv sphere cylinder" --speedup_base=CPUx01 --sort=1 --markdown
