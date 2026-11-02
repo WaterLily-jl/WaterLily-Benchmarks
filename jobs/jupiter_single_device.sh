@@ -6,7 +6,7 @@
 #SBATCH --cpus-per-task=72
 #SBATCH --gres=gpu:4
 #SBATCH --exclusive
-#SBATCH --time=04:00:00
+#SBATCH --time=12:00:00
 #SBATCH --output=slurm-single-%j.out
 
 # One device of a JUPITER Booster node (a GH200: one Grace CPU of 72 cores and one Hopper GPU) with benchmark.sh and
@@ -39,8 +39,10 @@
 # NUMA domain 0, next to GPU 0, the one CUDA.jl takes); POCL_AFFINITY=1 pins each PoCL thread to a core of its own.
 # CUDA.jl's memory pool stays on (mpi/jobs/jupiter_env.sh turns it off for CUDA-aware MPI). benchmark.sh and the
 # SIMD job write the same LocalPreferences.toml (the WaterLily backend of the next run), so the two must not overlap:
-# submit the SIMD job with --dependency=afterany on this one. Time: the checkpoint loads (each of the 15 runs of a size
-# starts from its checkpoint, 3.7 GB for cylinder 7) and the CPU runs of the largest sizes, an hour or two.
+# submit the SIMD job with --dependency=afterany on this one. Time: benchmark.sh reads the checkpoint of a size before
+# its warm-up and before each of its 5 runs, so 3 repetitions read about 180 GB per backend (cylinder 7 alone 3.7 GB a
+# time), an hour or more per backend from scratch, plus about an hour of 72-thread runs of the largest sizes: several
+# hours, so the limit is JUPITER's 12 h (only the time used is charged).
 #
 # Modules: GCC and git only, not mpi/jobs/jupiter_env.sh. There is no MPI here, and with its CUDA module on
 # LD_LIBRARY_PATH the cuBLAS of CUDA.jl's own runtime binds to the module's older libcublasLt.so.13 and does not load
