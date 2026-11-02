@@ -23,7 +23,8 @@
 # downloaded and precompiled, so that the job runs offline:
 #
 #   cd .. && git clone https://github.com/WaterLily-jl/WaterLily.jl WaterLily.jl-master && cd WaterLily-Benchmarks
-#   export WATERLILY_DIR=$PWD/../WaterLily.jl-master && source mpi/jobs/jupiter_env.sh
+#   module purge; export WATERLILY_DIR=$PWD/../WaterLily.jl-master
+#   export JULIA_DEPOT_PATH=${JULIA_DEPOT_PATH:-$PWD/../julia_depot}   # as mpi/jobs/jupiter_env.sh
 #   export JULIAUP_CHANNEL=1.13 && juliaup add 1.13; julia --version   # Julia 1.13, as the job (an error if installed)
 #   git -C $WATERLILY_DIR checkout v1.11.0
 #   julia --project=. -e 'using Pkg; Pkg.develop(path=ENV["WATERLILY_DIR"]); Pkg.update(); Pkg.precompile()'
@@ -34,8 +35,13 @@
 #
 # The cores: the node is the job's (--exclusive), and taskset keeps the runs on the 72 cores of the first Grace (0-71,
 # NUMA domain 0, next to GPU 0, the one CUDA.jl takes); POCL_AFFINITY=1 pins each PoCL thread to a core of its own.
-# CUDA.jl's memory pool stays on (jupiter_env.sh turns it off for CUDA-aware MPI). Time: about 2 h of the SIMD core
-# for the largest sizes, the rest minutes.
+# CUDA.jl's memory pool stays on (mpi/jobs/jupiter_env.sh turns it off for CUDA-aware MPI). Time: about 2 h of the
+# SIMD core for the largest sizes, the rest minutes.
+#
+# Modules: GCC and git only, not mpi/jobs/jupiter_env.sh. There is no MPI here, and with its CUDA module on
+# LD_LIBRARY_PATH the cuBLAS of CUDA.jl's own runtime binds to the module's older libcublasLt.so.13 and does not load
+# (undefined symbol cublasLtZZZMatmulAlgoGetHeuristicForStream); the git module's libcurl, older than Julia's, makes
+# Pkg's downloads log `curl_easy_setopt: 48`, so the preparation above loads no module at all.
 #
 # Julia 1.13 (JULIAUP_CHANNEL selects it for every `julia` here and in benchmark.sh, whatever juliaup's default): the
 # environments are resolved with it on the login node, and on Julia 1.11 every PoCL launch still allocates.
@@ -43,7 +49,8 @@
 cd "$SLURM_SUBMIT_DIR"
 WL_BASE="${WL_BASE:-$(cd "$SLURM_SUBMIT_DIR/.." && pwd)}"
 export WATERLILY_DIR="${WATERLILY_DIR:-$WL_BASE/WaterLily.jl-master}"
-source mpi/jobs/jupiter_env.sh       # modules, the depot next to this clone
+export JULIA_DEPOT_PATH="${JULIA_DEPOT_PATH:-$WL_BASE/julia_depot}"  # as mpi/jobs/jupiter_env.sh
+module purge; module load GCC git    # git: the compute nodes have none (benchmark.sh checks out v1.11.0)
 unset JULIA_CUDA_MEMORY_POOL         # one GPU, no MPI: CUDA.jl's default pool, as anyone running WaterLily has it
 export JULIA_PKG_OFFLINE=true        # the environments were prepared on the login node
 export POCL_AFFINITY=1               # pin PoCL's threads (KA 0.10)
