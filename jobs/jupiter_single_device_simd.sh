@@ -6,20 +6,22 @@
 #SBATCH --cpus-per-task=288
 #SBATCH --gres=gpu:4
 #SBATCH --exclusive
-#SBATCH --time=24:00:00
+#SBATCH --time=12:00:00
 #SBATCH --output=slurm-single-simd-%j.out
 
 # The single-core part of jobs/jupiter_single_device.sh: one Grace core (CPUx01, the SIMD backend) with benchmark.sh
-# and WaterLily v1.11, the same cases, sizes, checkpoints and repetitions. At 100 to 200 ns per cell and step, the
-# largest sizes (134 to 226 Mcells) take 20 to 60 s per step and 525 steps each (3 repetitions of 50 warm-up steps and
-# 5 runs of 25), so the sweep runs as four benchmark.sh at once, each on one core of its own Grace (and its memory):
-# tgv, sphere, cylinder 4 to 6, and cylinder 7. Each writes its own directory of data/jupiter_single_device_developed,
-# since benchmark.jl rewrites the environments.toml of its directory after every case. Submit from the repository
-# root, after the GPU and PoCL job (the two write the same LocalPreferences.toml):
+# and WaterLily v1.11, the same cases, sizes, checkpoints and repetitions. At 130 to 350 ns per cell and step, the
+# largest sizes (134 to 226 Mcells) take 20 to 80 s per step and 525 steps each (3 repetitions of 50 warm-up steps and
+# 5 runs of 25): cylinder 7 alone could take the 12 h limit. So the sweep runs as five benchmark.sh at once, each on a
+# core of its own (one per Grace and its memory, two on the second): tgv and cylinder 4 to 6, sphere, and the three
+# repetitions of cylinder 7 apart (compare.jl merges files with the same tags as repetitions, wherever they are).
+# Each writes its own directory of data/jupiter_single_device_developed, since benchmark.jl rewrites the
+# environments.toml of its directory after every case. Submit from the repository root, after the GPU and PoCL job
+# (the two write the same LocalPreferences.toml):
 #
 #   sbatch -A <budget> --dependency=afterany:<single-device job> jobs/jupiter_single_device_simd.sh
 #
-# Environment as jobs/jupiter_single_device.sh. No -w here: four checkouts at once would collide, so the job checks
+# Environment as jobs/jupiter_single_device.sh. No -w here: five checkouts at once would collide, so the job checks
 # that WaterLily.jl-master is at v1.11.0 instead (results carry its commit either way).
 
 cd "$SLURM_SUBMIT_DIR"
@@ -38,12 +40,14 @@ done
 echo "WaterLily v1.11.0 in $WATERLILY_DIR, $(julia --version), checkpoints in $CKPT"
 
 DD=data/jupiter_single_device_developed
-RUNS=("0 tgv 6,7,8,9" "72 sphere 3,4,5,6" "144 cylinder 4,5,6" "216 cylinder 7")  # core, case, sizes
+# core | repetitions | cases (-c) | sizes (-p) | directory and log name
+RUNS=("0|3|tgv cylinder|6,7,8,9 4,5,6|tgv_cylinder456" "72|3|sphere|3,4,5,6|sphere"
+      "108|1|cylinder|7|cylinder7_a" "144|1|cylinder|7|cylinder7_b" "216|1|cylinder|7|cylinder7_c")
 pids=()
 for r in "${RUNS[@]}"; do
-    read -r core case sizes <<< "$r"; tag="${case}_${sizes//,/}"
-    echo "core $core: $case $sizes, log slurm-single-simd-$SLURM_JOB_ID-$tag.log"
-    taskset -c $core ./benchmark.sh -b Array -t 1 -u false -dev "$CKPT" -r 3 -f -c "$case" -p "$sizes" -ft Float32 \
+    IFS='|' read -r core reps cases sizes tag <<< "$r"
+    echo "core $core: $cases $sizes, -r $reps, log slurm-single-simd-$SLURM_JOB_ID-$tag.log"
+    taskset -c $core ./benchmark.sh -b Array -t 1 -u false -dev "$CKPT" -r $reps -f -c "$cases" -p "$sizes" -ft Float32 \
         -dd "$DD/simd_$tag" > "slurm-single-simd-$SLURM_JOB_ID-$tag.log" 2>&1 &
     pids+=($!)
     sleep 30  # benchmark.sh writes LocalPreferences.toml (SIMD) just before each julia: not at the same moment
