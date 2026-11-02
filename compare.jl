@@ -134,9 +134,9 @@ for (i, case) in enumerate(cases)
     backends_str = [String.(k)[1] for k in keys.(benchmarks)]
     speedup_base_backend = backends_str[speedup_base_idx]
     # Get backends string vector and assert same case sizes for the different backends
-    log2p_str = [String.(keys(benchmarks[i][backend_str])) for (i, backend_str) in enumerate(backends_str)]
-    length(unique(log2p_str)) != 1 && @error "Case sizes mismatch."
-    log2p_str = sort(log2p_str[1])
+    log2p_str = [sort(String.(keys(benchmarks[i][backend_str]))) for (i, backend_str) in enumerate(backends_str)]
+    length(unique(log2p_str)) != 1 && @error "Case sizes mismatch."  # sorted: a joined benchmark's keys have their own order
+    log2p_str = log2p_str[1]
     f_test = benchmarks[1].tags[2]
     # Table data. Mean [ms] is the min over runs of the mean step, the reference for Cost/Speedup/Δ.
     # Median [ms] is the min over runs of the median step, i.e. the typical step.
