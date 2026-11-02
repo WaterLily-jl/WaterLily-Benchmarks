@@ -235,8 +235,9 @@ for (i, case) in enumerate(cases)
         N_str = (N./1e6) .|> x -> @sprintf("%.2f", x)
         # Sort plotting data
         unique_backends_str = unique(backends_str)
-        backends_sort_idxs = sortperm(unique_backends_str, by=length)
-        sort!(unique_backends_str, by=length)
+        bykey = b -> (length(b), b)  # CPUx01, CPUx02, ..., CPUx72 (zero-padded), then the GPUs
+        backends_sort_idxs = sortperm(unique_backends_str, by=bykey)
+        sort!(unique_backends_str, by=bykey)
 
         plotting_keys = Dict{Int, NTuple}(k => Tuple(data[k, version_cols]) for k in axes(data, 1))
         versions_key = unique.(collect(zip(values(plotting_keys)...))) |> x->reduce(vcat, x) |> x->join(x, '_')
@@ -244,18 +245,20 @@ for (i, case) in enumerate(cases)
 
         cg = cgrad(backend_color, length(unique_backends_str), categorical=true)
         colors = [c for c in cg.colors]
+        # the legend in a corner, small enough to stay off the data with up to 8 backends (a thread sweep)
+        legend_at(inside) = (legend=inside, legendfontsize=length(unique_backends_str) > 4 ? 10 : 14)
 
         p_cost = plot()
         for (i, bstr) in enumerate(unique_backends_str)
             scatter!(p_cost, N./1e6, data_plot[:, i, 2], label=unique_backends_str[i], ms=10, ma=1, color=colors[i])
         end
         scatter!(p_cost, yaxis=:log10, xaxis=:log10, yminorgrid=true, xminorgrid=true,
-            ylims=(1, 1000), xlims=(0.1, 600),
+            ylims=(0.5, 1000), xlims=(0.1, 600),  # a GPU at the largest sizes costs ~1 ns
             xlabel="DOF [M]", lw=0, framestyle=:box, grid=:xy, size=(600, 600),
             left_margin=Plots.Measures.Length(:mm, 5), right_margin=Plots.Measures.Length(:mm, 5),
             ylabel="Cost [ns/DOF/dt]", title=tests_dets[case]["title"], legend=false
         )
-        i == 1 && scatter!(p_cost, legend=:bottomleft, background_color_legend = RGBA{Float64}(1, 1, 1, 0.7))
+        i == 1 && scatter!(p_cost; legend_at(:topright)..., background_color_legend = RGBA{Float64}(1, 1, 1, 0.7))
         fancylogscale!(p_cost)
         fig_path = joinpath(string(@__DIR__), plot_dir, "$(case)_cost_$(versions_key).pdf")
         savefig(p_cost, fig_path)
@@ -267,15 +270,15 @@ for (i, case) in enumerate(cases)
         ctg = repeat(unique_backends_str, outer=length(log2p_str)) |> CategoricalArray
         levels!(ctg, unique_backends_str)
         p = annotated_groupedbar(groups, transpose(data_plot[:, :, 1]), ctg;
-            series_annotations=vec(transpose(data_plot[:, :, 3])) .|> x -> @sprintf("%d", x) .|> latexstring, bar_width=0.92,
+            series_annotations=vec(transpose(data_plot[:, :, 3])) .|> (x -> x < 10 ? @sprintf("%.1f", x) : @sprintf("%d", x)) .|> latexstring, bar_width=0.92,
             Dict(:xlabel=>"DOF [M]", :title=>tests_dets[case]["title"],
                 :ylims=>(1e-1, 1e5), :lw=>0, :framestyle=>:box, :yaxis=>:log10, :grid=>true,
                 :color=>reshape(colors, (1, length(unique_backends_str))),
                 :size=>(600, 600)
             )...
         )
-        plot!(p, ylabel="Time [s]", left_margin=Plots.Measures.Length(:mm, 0), legend=false)
-        i == 1 && plot!(p, legend=:topleft, background_color_legend = RGBA{Float64}(1, 1, 1, 0.7))
+        plot!(p, ylabel="Time [ms]", left_margin=Plots.Measures.Length(:mm, 0), legend=false)
+        i == 1 && plot!(p; legend_at(:topleft)..., background_color_legend = RGBA{Float64}(1, 1, 1, 0.7))
 
         fig_path = joinpath(string(@__DIR__), plot_dir, "$(case)_benchmark_$(versions_key).pdf")
         savefig(p, fig_path)
