@@ -6,17 +6,19 @@
 #SBATCH --cpus-per-task=72
 #SBATCH --gres=gpu:4
 #SBATCH --exclusive
-#SBATCH --time=06:00:00
+#SBATCH --time=04:00:00
 #SBATCH --output=slurm-single-%j.out
 
 # One device of a JUPITER Booster node (a GH200: one Grace CPU of 72 cores and one Hopper GPU) with benchmark.sh and
-# WaterLily v1.11 (KernelAbstractions 0.10): one Grace core (CPUx01, the SIMD backend), the 72 cores of that Grace
-# (CPUx72, KernelAbstractions on PoCL threads) and the GPU (CUDA.jl 6.5), for the TGV, the sphere and the moving
-# cylinder at four sizes each, 100 steps of the transient (the largest sizes have no developed-flow checkpoints).
-# Submit from the repository root:
+# WaterLily v1.11 (KernelAbstractions 0.10): the 72 cores of a Grace (CPUx72, KernelAbstractions on PoCL threads) and
+# the GPU (CUDA.jl 6.5), for the TGV, the sphere and the moving cylinder at four sizes each, from developed-flow
+# checkpoints, 3 repetitions of 5 runs of 25 steps (benchmark.sh's defaults). One Grace core (CPUx01, SIMD) is
+# jobs/jupiter_single_device_simd.sh, whose largest sizes take hours. The checkpoints are read from $CKPT (by default
+# $SCRATCH_e_ext_2025e01_127/bernat/benchmark_checkpoints), where jobs/jupiter_develop.sh writes the sizes that
+# checkpoints/ lacks (tgv 9, sphere 6, cylinder 6 and 7). Submit from the repository root:
 #
-#   sbatch -A <budget> jobs/jupiter_single_device.sh
-#   sbatch -A <budget> jobs/jupiter_single_device.sh -t "72" -b CuArray   # extra benchmark.sh args replace the defaults
+#   sbatch -A <budget> --dependency=afterok:<develop job> jobs/jupiter_single_device.sh
+#   sbatch -A <budget> jobs/jupiter_single_device.sh -b CuArray   # extra benchmark.sh args replace the defaults
 #
 # Prepare on a login node (compute nodes have no internet), once: a clone of WaterLily at v1.11.0 next to this one,
 # and the two environments benchmark.sh runs in (this directory for the CPU, gpu/CUDA for the GPU), resolved,
@@ -35,8 +37,10 @@
 #
 # The cores: the node is the job's (--exclusive), and taskset keeps the runs on the 72 cores of the first Grace (0-71,
 # NUMA domain 0, next to GPU 0, the one CUDA.jl takes); POCL_AFFINITY=1 pins each PoCL thread to a core of its own.
-# CUDA.jl's memory pool stays on (mpi/jobs/jupiter_env.sh turns it off for CUDA-aware MPI). Time: about 2 h of the
-# SIMD core for the largest sizes, the rest minutes.
+# CUDA.jl's memory pool stays on (mpi/jobs/jupiter_env.sh turns it off for CUDA-aware MPI). benchmark.sh and the
+# SIMD job write the same LocalPreferences.toml (the WaterLily backend of the next run), so the two must not overlap:
+# submit the SIMD job with --dependency=afterany on this one. Time: the checkpoint loads (each of the 15 runs of a size
+# starts from its checkpoint, 3.7 GB for cylinder 7) and the CPU runs of the largest sizes, an hour or two.
 #
 # Modules: GCC and git only, not mpi/jobs/jupiter_env.sh. There is no MPI here, and with its CUDA module on
 # LD_LIBRARY_PATH the cuBLAS of CUDA.jl's own runtime binds to the module's older libcublasLt.so.13 and does not load
@@ -57,11 +61,15 @@ export JULIA_PKG_OFFLINE=true        # the environments were prepared on the log
 export POCL_AFFINITY=1               # pin PoCL's threads (KA 0.10)
 export JULIAUP_CHANNEL="${JULIAUP_CHANNEL:-1.13}"
 [[ $(julia --version) == "julia version 1.13."* ]] || { echo "Julia 1.13 needed, got $(julia --version)" >&2; exit 1; }
-lscpu | grep -E "^NUMA node[0-9]+ CPU\(s\)"; taskset -cp $$; nvidia-smi -L
+CKPT="${CKPT:-${SCRATCH_e_ext_2025e01_127:?}/bernat/benchmark_checkpoints}"
+for f in tgv_{6,7,8,9} sphere_{3,4,5,6} cylinder_{4,5,6,7}; do  # benchmark.sh stops the sweep at a missing one
+    [ -f "$CKPT/${f}_Float32.jld2" ] || { echo "no checkpoint $CKPT/${f}_Float32.jld2 (jobs/jupiter_develop.sh)" >&2; exit 1; }
+done
+lscpu | grep -E "^NUMA node[0-9]+ CPU\(s\)" | grep -v "CPU(s):\s*$"; nvidia-smi -L
 echo "WaterLily $(git -C "$WATERLILY_DIR" describe --tags) in $WATERLILY_DIR, $(julia --version)"
 julia --project=gpu/CUDA -e 'using CUDA; CUDA.versioninfo()'
 
-DEFAULTS=(-b "Array CuArray" -t "1 72" -w "v1.11.0" -u false -dev "" -f
-          -c "tgv sphere cylinder" -p "6,7,8,9 3,4,5,6 4,5,6,7" -s 100 -ft Float32 -dd "data/jupiter_single_device")
+DEFAULTS=(-b "Array CuArray" -t "72" -w "v1.11.0" -u false -dev "$CKPT" -r 3 -f -c "tgv sphere cylinder"
+          -p "6,7,8,9 3,4,5,6 4,5,6,7" -ft Float32 -dd "data/jupiter_single_device_developed")
 taskset -c 0-71 ./benchmark.sh "${DEFAULTS[@]}" "$@"
-julia --project=. compare.jl --data_dir=data/jupiter_single_device --patterns="tgv sphere cylinder" --speedup_base=CPUx01 --sort=1 --markdown
+julia --project=. compare.jl --data_dir=data/jupiter_single_device_developed --patterns="tgv sphere cylinder" --sort=1 --markdown
