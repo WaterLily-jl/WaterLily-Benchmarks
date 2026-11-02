@@ -106,11 +106,13 @@ function plot_weak(curves; out="weak_scaling.pdf", refnp=1, inset=nothing)
     # legend order: TGV (small→big), then Sphere (small→big) — numeric size, not string sort
     keys_sorted = sort(collect(keys(curves));
                        by = k -> (k[1] == "tgv" ? 0 : 1, prod(parse.(Int, split(k[2], 'x')))))
-    # 2-curve figures: lightrainbow's endpoints are both reddish (magenta/red) — use two
-    # well-separated samples (teal/red, matching hues 3 and 6 of the 6-curve strong palette)
-    colors = length(keys_sorted) == 2 ?
+    # 1- and 2-curve figures: lightrainbow's endpoints are both reddish (magenta/red) — use two
+    # well-separated samples (teal/red, hues 3 and 6 of the 6-curve strong palette, the colours
+    # of the ParCFD 2026 weak-scaling figure)
+    colors = length(keys_sorted) <= 2 ?
         Makie.resample_cmap(:lightrainbow, 6)[[3, 6]] :
-        Makie.resample_cmap(:lightrainbow, max(length(keys_sorted), 2))
+        Makie.resample_cmap(:lightrainbow, length(keys_sorted))
+    lowest_end = 1.0   # the lowest last point of the curves: where the inset may go
     for (i, key) in enumerate(keys_sorted)
         pts = filter(p -> p.np >= refnp, curves[key])
         iref = findfirst(p -> p.np == refnp, pts)
@@ -119,6 +121,7 @@ function plot_weak(curves; out="weak_scaling.pdf", refnp=1, inset=nothing)
             continue
         end
         np = [p.np for p in pts]; eff = pts[iref].ms ./ [p.ms for p in pts]
+        lowest_end = min(lowest_end, eff[end])
         c = colors[mod1(i, length(colors))]
         scatterlines!(ax, np, eff; color = c, marker = :circle, markersize = 12,
                       label = curve_label(key[1], key[2]))
@@ -131,14 +134,22 @@ function plot_weak(curves; out="weak_scaling.pdf", refnp=1, inset=nothing)
 
     if !isnothing(inset)
         nps_in = sort(unique(p.np for pts in values(curves) for p in pts if p.np >= inset))
+        # x scale of the sampling: LINEAR for half-node (+64) steps, so that equal node
+        # increments get equal spacing; log2 for doubling node counts, every other power of 2
+        # labeled (the inset is narrow)
+        doubling = all(ispow2, nps_in)
+        xt_in = doubling ? filter(n -> iseven(trailing_zeros(n) - trailing_zeros(inset)), nps_in) : nps_in
         # bbox positioning = a TRUE overlay, fully outside the layout: an inset placed in
         # fig[1,1] (even with tellwidth/tellheight=false + Inside alignmode) still couples its
         # protrusions into the row and pushed the main axis down ~26 px. Coordinates are figure
-        # units (600×450), origin bottom-left; box ≈ the old Relative(0.44/0.36)@(0.94,0.14).
-        ax2 = Axis(fig; bbox = BBox(341, 561, 108, 240),
+        # units (600×450), origin bottom-left; box ≈ the old Relative(0.44/0.36)@(0.94,0.14),
+        # its title up to E ≈ 0.57; when a curve ends below E = 0.6, the inset moves left of the
+        # last doubling of n_p, where that curve drops (clear of a one-curve legend).
+        x0 = lowest_end < 0.6 ? 300 : 341
+        ax2 = Axis(fig; bbox = BBox(x0, x0 + 220, 108, 240),
             backgroundcolor = :white,
-            # LINEAR x: with half-node (+64) sampling, equal node increments get equal spacing
-            xticks = (nps_in, string.(nps_in)),
+            xscale = doubling ? log2 : identity,
+            xticks = (xt_in, string.(xt_in)),
             xticklabelsize = 16, yticklabelsize = 16, ytickformat = "{:.2f}",
             title = latexstring("\\text{Internode:}\\ E = t_{$inset} / t_{n_p}"),
             titlesize = 18, titlegap = 3)
@@ -154,7 +165,7 @@ function plot_weak(curves; out="weak_scaling.pdf", refnp=1, inset=nothing)
         end
         hlines!(ax2, [1.0]; color = (:gray, 0.6), linestyle = :dash, linewidth = 1.2)
         xlims!(ax2, inset, maximum(nps_in))
-        ylims!(ax2, 0.8, 1.02)
+        ylims!(ax2, min(0.8, floor(20 * minimum(effs_all)) / 20), 1.02)   # down to the lowest point
         translate!(ax2.blockscene, 0, 0, 150)   # draw the inset above the main axis
     end
 

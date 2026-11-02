@@ -78,6 +78,10 @@ bash mpi/jobs/submit.sh snellius weak tgv 6 "1 2 4 8"
 ```sh
 julia --project=plotting mpi/plot_strong.jl data/mpi/jupiter_strong_tgv_9
 julia --project=plotting mpi/plot_weak.jl data/mpi/jupiter_weak_tgv_8 --refnp=4   # efficiency against one full node
+julia --project=plotting mpi/plot_weak.jl data/mpi/jupiter_weak_tgv_8 --inset=4   # against one GPU, inset against one node
+julia --project=plotting mpi/plot_strong.jl --combine --out=data/mpi/jupiter_strong_tgv_9_10.pdf data/mpi/jupiter_strong_tgv_9 data/mpi/jupiter_strong_tgv_10
 ```
+
+`--combine` puts the curves of several directories in one figure, saved as `--out`. The colours are those of the ParCFD 2026 figures: one hue of `:lightrainbow` per case and size in the strong-scaling plots (TGV 512³ and 1024³ keep theirs from figure to figure), teal and red for the first two curves of a weak-scaling plot. The inset's x axis is log2 when its rank counts double, and linear for half-node steps.
 
 On Snellius, `WATERLILY_RPN` sets the ranks per node (default 64), spread evenly over the CCXs of each node. On JUPITER there is one rank per GPU, 4 per node. `jupiter_cpu` runs `mpi/jobs/jupiter_cpu_scaling.sh` on the CPUs of the JUPITER nodes (4 Grace CPUs of 72 cores): one thread per rank, `WATERLILY_RPN` ranks per node (default 256, which splits the `2^p` grids, unlike all 288 cores), the same number on each Grace CPU, spread evenly over its cores. The job prints the NUMA nodes of the first node, to check that the cores of each Grace CPU are numbered as the binding assumes.

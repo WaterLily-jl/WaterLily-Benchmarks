@@ -1,7 +1,7 @@
 # Strong-scaling plot from bench result files (the `[ Info: ...]` lines that
 # mpi/scaling.jl prints to the job outputs).
 #
-#   julia --project=plotting mpi/plot_strong.jl <results.txt | dir ...> [--out=strong_scaling.pdf]
+#   julia --project=plotting mpi/plot_strong.jl <results.txt | dir ...> [--out=strong_scaling.pdf] [--combine]
 #
 # Each ARG is either a combined results FILE or a DIRECTORY:
 #   • FILE      → one figure, labeled by the filename (legacy combined-results workflow).
@@ -11,6 +11,8 @@
 # One curve per (case, grid); serial plotted at np=1, dashed ideal-scaling guide anchored at each
 # curve's first point. Log-log, powers-of-2 ticks, LaTeX theme. Several file-labels → the label is
 # inserted into --out (strong.pdf → strong_<label>.pdf); dir args always save as <dir>/<out base>.
+# --combine puts the curves of every input in one figure, saved as --out (e.g. the 512³ and 1024³
+# campaigns, one dir each: `--combine --out=data/mpi/jupiter_strong_tgv_9_10.pdf <dir 9> <dir 10>`).
 # First use: julia --project=plotting -e 'using Pkg; Pkg.instantiate()'
 
 using CairoMakie
@@ -82,6 +84,14 @@ end
 struct IntegerTicks end
 Makie.get_tickvalues(::IntegerTicks, vmin, vmax) = ceil(Int, vmin):floor(Int, vmax)
 
+# The colours of the ParCFD 2026 figures: six hues of :lightrainbow, one per (case, size) of its
+# strong-scaling plot, so that a curve keeps its colour from figure to figure; other curves take
+# the hues in order
+const HUES = Makie.resample_cmap(:lightrainbow, 6)
+const PARCFD_HUE = Dict(("tgv", 256) => 1, ("tgv", 512) => 2, ("tgv", 1024) => 3,
+                        ("sphere", 256) => 4, ("sphere", 512) => 5, ("sphere", 1024) => 6)
+hue(case, grid, i) = HUES[get(PARCFD_HUE, (case, parse(Int, split(grid, 'x')[1])), mod1(i, 6))]
+
 # Plot the curves of ONE machine (one input file).
 function plot_strong(curves; out="strong_scaling.pdf")
     set_theme!(merge(theme_latexfonts(),
@@ -104,13 +114,12 @@ function plot_strong(curves; out="strong_scaling.pdf")
 
     # legend order: TGV (small→big), then Sphere (small→big) — numeric size, not string sort
     keys_sorted = sort(collect(keys(curves));
-                       by = k -> (k[3], k[1] == "tgv" ? 0 : 1, prod(parse.(Int, split(k[2], 'x')))))
-    colors = Makie.resample_cmap(:lightrainbow, max(length(keys_sorted), 2))
+                       by = k -> (k[1] == "tgv" ? 0 : 1, prod(parse.(Int, split(k[2], 'x'))), k[3]))
     for (i, key) in enumerate(keys_sorted)
         pts = curves[key]
         length(pts) < 1 && continue
         np = [p.np for p in pts]; ms = [p.ms for p in pts]
-        c = colors[mod1(i, length(colors))]
+        c = hue(key[1], key[2], i)
         # ideal scaling anchored at the curve's first (lowest-np) point
         np_id = [np[1], maximum(nps_all)]
         lines!(ax, np_id, ms[1] .* np[1] ./ np_id;
@@ -130,16 +139,29 @@ end
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
 function main(args)
-    out   = "strong_scaling.pdf"
-    files = String[]
+    out     = "strong_scaling.pdf"
+    combine = false
+    files   = String[]
     for a in args
-        startswith(a, "--out=") ? (out = String(split(a, "=", limit=2)[2])) : push!(files, a)
+        if startswith(a, "--out=")
+            out = String(split(a, "=", limit=2)[2])
+        elseif a == "--combine"
+            combine = true
+        else
+            push!(files, a)
+        end
     end
     out = splitext(out)[1] * ".pdf"   # figures are always PDF
     isempty(files) && error("usage: julia --project=plotting mpi/plot_strong.jl <results.txt | dir ...> [--out=plot.pdf]")
     pairs, outdir = resolve_inputs(files, "strong_")
     curves = parse_results(pairs)
     isempty(curves) && error("no `per_step` lines found in $(join(files, ", "))")
+    if combine
+        for (k, pts) in sort(collect(curves); by = first)
+            @info "curve $(k[1]) $(k[2]) [$(k[3])]: $(length(pts)) points (np=$(join([p.np for p in pts], ",")))"
+        end
+        return plot_strong(curves; out)
+    end
     labels = sort(unique(k[3] for k in keys(curves)))
     base, ext = splitext(out)
     for label in labels
