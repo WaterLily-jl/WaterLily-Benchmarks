@@ -48,7 +48,8 @@
 
 cd "$SLURM_SUBMIT_DIR"
 WL_BASE="${WL_BASE:-$(cd "$SLURM_SUBMIT_DIR/.." && pwd)}"
-export WATERLILY_DIR="${WATERLILY_DIR:-$WL_BASE/WaterLily.jl-master}"
+export WATERLILY_DIR="$WL_BASE/WaterLily.jl-master"  # never the submitting shell's (jupiter_env.sh points it at the
+# mpi-igg clone), since benchmark.sh checks out v1.11.0 in it
 export JULIA_DEPOT_PATH="${JULIA_DEPOT_PATH:-$WL_BASE/julia_depot}"  # as mpi/jobs/jupiter_env.sh
 module purge; module load GCC git    # git: the compute nodes have none (benchmark.sh checks out v1.11.0)
 unset JULIA_CUDA_MEMORY_POOL         # one GPU, no MPI: CUDA.jl's default pool, as anyone running WaterLily has it
