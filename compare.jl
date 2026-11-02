@@ -62,6 +62,26 @@ function merge_repetitions(benchmarks)
     return merged, reps
 end
 benchmarks_all, repetitions = merge_repetitions(benchmarks_all)
+# Join the parts of a benchmark split over its sizes (benchmark.sh runs of one backend on disjoint sizes, e.g. the
+# largest size in jobs of its own): the tags but the sizes (tags[3]) identical, as many repetitions each.
+function join_sizes(benchmarks, reps)
+    same(a, b) = a.tags[[1:2; 4:end]] == b.tags[[1:2; 4:end]] && isdisjoint(a.tags[3], b.tags[3]) && reps[a] == reps[b]
+    joined = BenchmarkGroup[]
+    for b in benchmarks
+        k = findfirst(m -> same(m, b), joined)
+        if isnothing(k)
+            push!(joined, b)
+        else
+            base = joined[k]
+            for bstr in keys(b), n in keys(b[bstr])
+                base[bstr][n] = b[bstr][n]
+            end
+            base.tags[3] = sort([base.tags[3]; b.tags[3]])
+        end
+    end
+    return joined
+end
+benchmarks_all = join_sizes(benchmarks_all, repetitions)
 # Scatter of the run means: their std within a process. The runs of a process share its machine state,
 # so with repetitions take the std of the per-process minima, with the within-process std as a floor.
 function scatter(rmeans, reps)
