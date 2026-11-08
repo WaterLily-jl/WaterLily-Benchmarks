@@ -1,6 +1,8 @@
 # Strong and weak scaling, and correctness checks, of WaterLily's MPI extension (WaterLily.jl branch mpi-igg) on CPUs
-# and GPUs; with --project=mpi/fused, of branch mpi-igg-fused (its own halos, without ImplicitGlobalGrid). Every rank
-# runs this script; it detects an MPI launch (mpiexec/srun) and runs serial otherwise.
+# and GPUs. Since 57443f8 the branch exchanges the halos itself, or with ImplicitGlobalGrid's update_halo! under
+# WATERLILY_HALO=igg; up to 12c339c ImplicitGlobalGrid carried them. --project=mpi/fused runs branch mpi-igg-fused, the
+# same exchange before it was merged (for the records of mpi/fused/jobs). Every rank runs this script; it detects an
+# MPI launch (mpiexec/srun) and runs serial otherwise.
 #
 #   julia --project=mpi mpi/scaling.jl --case=tgv --log2p=7                           # serial CPU
 #   mpiexec -n 4 julia --project=mpi mpi/scaling.jl --case=tgv --log2p=7              # 4 ranks, CPU
@@ -23,8 +25,8 @@
 #                             its time (self samples, C frames such as MPI and UCX included)
 #
 # With IGG_TRACE=1 and the ImplicitGlobalGrid fork's timers (branch halo-trace), rank 0 also prints the time per step
-# that the timed steps spent in update_halo!, by array size, phase and dimension (ImplicitGlobalGrid.halo_trace; not
-# with mpi/fused).
+# that the timed steps spent in update_halo!, by array size, phase and dimension (ImplicitGlobalGrid.halo_trace), when
+# ImplicitGlobalGrid carries the halos (WATERLILY_HALO=igg, or WaterLily up to 12c339c).
 #
 # Rank 0 prints one line per run, which mpi/plot_strong.jl and mpi/plot_weak.jl read:
 #   [ Info: MPI np=8  case=tgv  grid=256x256x256  local=128x128x128  100 steps  per_step=12.3ms  ...
@@ -67,8 +69,10 @@ bname == "CuArray" && WaterLily.backend != "KernelAbstractions" &&
 perdir = case == "tgv" ? (1, 2, 3) : ()
 if use_mpi
     using MPI
-    # ImplicitGlobalGrid carries the halos of branch mpi-igg; the environment of branch mpi-igg-fused has none
-    isnothing(Base.identify_package("ImplicitGlobalGrid")) || @eval using ImplicitGlobalGrid
+    # ImplicitGlobalGrid: the halo backend of WATERLILY_HALO=igg, or the halos of WaterLily up to 12c339c, whose extension
+    # needs it (no HaloBackend there); the environment of branch mpi-igg-fused has none
+    !isnothing(Base.identify_package("ImplicitGlobalGrid")) &&
+        (!isdefined(WaterLily, :HaloBackend) || get(ENV, "WATERLILY_HALO", "native") == "igg") && @eval using ImplicitGlobalGrid
     MPI.Initialized() || MPI.Init()
     const nranks = MPI.Comm_size(MPI.COMM_WORLD)
     # weak scaling: a balanced topology, which the shape-aware decomposition of init_waterlily_mpi reproduces for cubic blocks
@@ -79,7 +83,10 @@ else
     const nranks, me, comm = 1, 0, nothing
     const gdims = local_dims = dims
 end
-const igg = use_mpi && @isdefined(ImplicitGlobalGrid) && ImplicitGlobalGrid.grid_is_initialized()  # the halos are its own
+const igg_grid = use_mpi && @isdefined(ImplicitGlobalGrid) && ImplicitGlobalGrid.grid_is_initialized()  # WaterLily up to 12c339c
+const halo = !use_mpi ? "none" : isdefined(WaterLily, :HaloBackend) ?
+    (nameof(typeof(WaterLily.par_mode[].halo)) == :IGGHalo ? "igg" : "native") : igg_grid ? "igg" : "native"
+const igg = halo == "igg"  # the halos are ImplicitGlobalGrid's
 
 # ── Cases (as in src/cases.jl, sized by the global grid) ───────────────────────────────────────────────
 function tgv(dims, gdims; Re=1600)
@@ -136,7 +143,7 @@ if me == 0
     println("WaterLily $(pkgversion(WaterLily)) ($(commit(pkgdir(WaterLily)))), WaterLily-Benchmarks $(first(commit(dirname(@__DIR__)), 7)), " *
             "Julia $VERSION, backend $(WaterLily.backend), $bname, $T")
     if use_mpi
-        println("MPI: $(first(split(MPI.Get_library_version(), '\n'))), has_cuda=$(MPI.has_cuda()), " *
+        println("MPI: $(first(split(MPI.Get_library_version(), '\n'))), has_cuda=$(MPI.has_cuda()), halo=$halo, " *
                 (igg ? "IGG_CUDAAWARE_MPI=$(get(ENV, "IGG_CUDAAWARE_MPI", "unset"))" :
                        "WATERLILY_GPU_AWARE_MPI=$(get(ENV, "WATERLILY_GPU_AWARE_MPI", "unset"))"))
         bname == "CuArray" && length(unique(devices)) < nranks && @warn "$(length(unique(devices))) distinct GPUs for $nranks ranks"
@@ -200,4 +207,4 @@ if me == 0
     end
 end
 halo_timers && ImplicitGlobalGrid.halo_trace(per=Nsteps, unit="step")
-igg && finalize_global_grid()
+igg_grid && finalize_global_grid()

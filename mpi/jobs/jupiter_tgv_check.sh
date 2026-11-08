@@ -10,7 +10,9 @@
 #SBATCH --output=wl-tgv-check-%j.out
 
 # Correctness of the multi-GPU TGV: the same run on one GPU without MPI, then on 1, 4 and 8 GPUs (two nodes), with
-# host-staged (the default of jupiter_env.sh) and CUDA-aware halos, and on 8 CPU ranks. Every run saves its global
+# host-staged (the default) and CUDA-aware halos, on 8 GPUs with ImplicitGlobalGrid's halos (WATERLILY_HALO=igg, the
+# optional backend of WaterLily mpi-igg since 57443f8; the same run as gpu_np8 with older WaterLily), and on 8 CPU
+# ranks. Every run saves its global
 # diagnostics (kinetic energy, enstrophy, max|u|, max|p|, Δt, Poisson iterations) and mpi/check.jl compares them with
 # the one-GPU run.
 # Submit from the repository root:
@@ -19,8 +21,8 @@
 #
 # It fits in the develbooster reservation (add --reservation=develbooster: at most 4 nodes and 2 h per job).
 #
-# Expected (see docs/src/mpi.md): MPI on 1 GPU and the CUDA-aware 8-GPU run are identical to the serial and
-# host-staged runs that they repeat. With more ranks, the convection term takes its one-sided boundary form at the
+# Expected (see docs/src/mpi.md): MPI on 1 GPU, the CUDA-aware 8-GPU run and the one with ImplicitGlobalGrid's halos
+# are identical to the serial and host-staged runs that they repeat. With more ranks, the convection term takes its one-sided boundary form at the
 # rank faces (the halo is one cell wide), so the diagnostics differ slightly from the serial run (~1e-4 to 1e-3);
 # the 8-GPU and 8-CPU runs use the same decomposition and differ by FP32 round-off.
 
@@ -44,13 +46,14 @@ run () { # name, srun options..., then -- and scaling.jl options
 run gpu_serial            -N 1 -n 1 -- --backend=CuArray --serial
 run gpu_np1               -N 1 -n 1 -- --backend=CuArray
 run gpu_np4               -N 1 -n 4 -- --backend=CuArray
-IGG_CUDAAWARE_MPI=0 run gpu_np8           -N 2 -n 8 -- --backend=CuArray
-IGG_CUDAAWARE_MPI=1 run gpu_np8_cudaaware -N 2 -n 8 -- --backend=CuArray
+WATERLILY_GPU_AWARE_MPI=0 IGG_CUDAAWARE_MPI=0 run gpu_np8           -N 2 -n 8 -- --backend=CuArray
+WATERLILY_GPU_AWARE_MPI=1 IGG_CUDAAWARE_MPI=1 run gpu_np8_cudaaware -N 2 -n 8 -- --backend=CuArray
+WATERLILY_HALO=igg run gpu_np8_igg         -N 2 -n 8 -- --backend=CuArray
 run cpu_np8               -N 2 -n 8 -- --backend=Array
 
 echo; echo "=== Diagnostics against the one-GPU run (largest relative difference over the run)"
-julia mpi/check.jl "$DIR/gpu_serial.csv" "$DIR"/gpu_np1.csv "$DIR"/gpu_np4.csv "$DIR"/gpu_np8.csv "$DIR"/gpu_np8_cudaaware.csv "$DIR"/cpu_np8.csv
-echo; echo "=== 8 GPUs, CUDA-aware against host-staged halos"
-julia mpi/check.jl "$DIR/gpu_np8.csv" "$DIR/gpu_np8_cudaaware.csv"
+julia mpi/check.jl "$DIR/gpu_serial.csv" "$DIR"/gpu_np1.csv "$DIR"/gpu_np4.csv "$DIR"/gpu_np8.csv "$DIR"/gpu_np8_cudaaware.csv "$DIR"/gpu_np8_igg.csv "$DIR"/cpu_np8.csv
+echo; echo "=== 8 GPUs, CUDA-aware and ImplicitGlobalGrid's halos against host-staged ones"
+julia mpi/check.jl "$DIR/gpu_np8.csv" "$DIR/gpu_np8_cudaaware.csv" "$DIR/gpu_np8_igg.csv"
 echo; echo "=== 8 GPUs against 8 CPU ranks (same decomposition)"
 julia mpi/check.jl "$DIR/gpu_np8.csv" "$DIR/cpu_np8.csv"

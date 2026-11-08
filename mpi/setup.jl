@@ -3,12 +3,14 @@
 #   source mpi/jobs/<cluster>_env.sh        # the MPI (and CUDA) modules used by the jobs
 #   julia mpi/setup.jl [--backend=KernelAbstractions|SIMD] [--env=DIR] [--cuda-local] [--system-mpi=false] [--mpi-abi=MPICH]
 #
-# It develops WaterLily from $WATERLILY_DIR (a WaterLily.jl clone on branch mpi-igg, or mpi-igg-fused for mpi/fused),
+# It develops WaterLily from $WATERLILY_DIR (a WaterLily.jl clone on branch mpi-igg, or mpi-igg-fused for mpi/fused,
+# the records of mpi/fused/jobs: the branch merged into mpi-igg at 57443f8),
 # binds MPI.jl to the MPI library of the loaded module (MPIPreferences.use_system_binary), sets WaterLily's backend
 # and precompiles.
 #   --backend     KernelAbstractions (default) for GPUs and threaded CPUs, SIMD for one thread per rank on CPUs
 #   --env         build the environment in DIR instead of mpi/: with the Project.toml of DIR when the repository has
-#                 one (mpi/fused, for WaterLily branch mpi-igg-fused, without ImplicitGlobalGrid), otherwise with the
+#                 one (mpi/fused, for WaterLily branch mpi-igg-fused, without ImplicitGlobalGrid; mpi/ keeps it for
+#                 the WATERLILY_HALO=igg backend of branch mpi-igg), otherwise with the
 #                 packages of mpi/Project.toml (a second environment with another backend, e.g. mpi/cpu with SIMD for
 #                 the CPU runs on JUPITER)
 #   --cuda-local  use the CUDA toolkit of the loaded module instead of the CUDA_jll artifacts, so that CUDA.jl and a

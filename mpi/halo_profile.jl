@@ -8,7 +8,8 @@
 # (CUDA.enable_synchronization!): ImplicitGlobalGrid packs and unpacks each side on its own stream, so CUDA.jl waits
 # for the previous side every time, although ImplicitGlobalGrid synchronizes its streams itself. CONCURRENT=1 exchanges
 # each field with the routine of WaterLily's `face_comm!` (the Poisson iterations), which posts the messages of all
-# the split dimensions at once instead of one dimension after the other (face ghosts only). Rank 0 prints the
+# the split dimensions at once instead of one dimension after the other (face ghosts only; WaterLily up to 12c339c,
+# whose extension had that routine, `_face_halo!`). Rank 0 prints the
 # time per update_halo!, then
 #   1. CUDA.@profile of 100 calls: the CUDA API calls (launches, syncs, copies) and the kernels behind them,
 #   2. Julia's sampling profiler over about 2 s of calls: where the host spends that time, by line of
@@ -27,7 +28,7 @@ init_global_grid(nxyz...; dimx=mpidims[1], dimy=mpidims[2], dimz=mpidims[3], per
 splitdims = Tuple(findall(>(1), collect(mpidims)))
 A = [CUDA.rand(Float32, nxyz...) for _ in 1:nfields]; CUDA.synchronize()
 foreach(a -> CUDA.enable_synchronization!(a, ownersync), A)
-const face_halo! = Base.get_extension(WaterLily, :WaterLilyMPIExt)._face_halo!
+const face_halo! = concurrent ? Base.get_extension(WaterLily, :WaterLilyMPIExt)._face_halo! : nothing
 calls(n) = for _ in 1:n
     concurrent ? foreach(a -> face_halo!(ImplicitGlobalGrid.wrap_field(a), splitdims), A) : update_halo!(A...; dims=splitdims)
 end
