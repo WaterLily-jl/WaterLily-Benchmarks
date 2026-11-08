@@ -12,3 +12,4 @@ gpu/
 docs/build/
 docs/node_modules/
 docs/src/assets/cases/
+mpi/cpu/
