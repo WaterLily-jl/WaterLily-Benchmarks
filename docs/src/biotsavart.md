@@ -12,7 +12,7 @@ Each run checks out the WaterLily ref first and then its BiotSavartBCs ref, sinc
 
 ## How it works
 
-- `-bs` points the `[sources]` entry of `Project.toml` at the local clone and forces `-u true`. On exit, also after an error or an interrupt, the sweep restores `Project.toml`, `Manifest.toml` and the `gpu/` environments as they were, since Pkg would otherwise keep using the clone. On a clone that had no `Manifest.toml` before the sweep, this removes it again: the next `benchmark.sh` run installs it, but `compare.jl` needs `julia --project -e 'using Pkg; Pkg.instantiate()'` first (the action does this).
+- `-bs` points the `[sources]` entry of `Project.toml` at the local clone, develops it in each environment (so an existing `Manifest.toml` takes the dependencies of the checked-out branch, not those of `main`) and forces `-u true`. On exit, also after an error or an interrupt, the sweep restores `Project.toml`, `Manifest.toml` and the `gpu/` environments as they were, since Pkg would otherwise keep using the clone. On a clone that had no `Manifest.toml` before the sweep, this removes it again: the next `benchmark.sh` run installs it, but `compare.jl` needs `julia --project -e 'using Pkg; Pkg.instantiate()'` first (the action does this).
 - A `-bs` run is tagged `<WaterLily hash>+bs<BiotSavartBCs hash>`, in the results and in the file and directory names, so runs that differ only in BiotSavartBCs stay apart.
 - `compare.jl` shows such a run as e.g. `master (bs main)`, naming the BiotSavartBCs ref from the clone in `$BIOTSAVART_DIR`, and `--speedup_base` also accepts a BiotSavartBCs ref or hash.
 
