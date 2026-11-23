@@ -31,7 +31,7 @@
 #
 #   sbatch -A <budget> --reservation=develbooster mpi/jobs/jupiter_ad_check.sh [LOG2P=7] [STEPS=100] [CHECK=10]
 #
-# Variables: EPS ["1e-5 1e-6 1e-7"], TOL [1e-9], WATERLILY_ENV [mpi].
+# Variables: EPS ["1e-5 1e-6 1e-7"], TOL [1e-9], RUN_MINUTES [10] (the time limit of each run), WATERLILY_ENV [mpi].
 
 cd "$SLURM_SUBMIT_DIR"
 ulimit -c 0  # no core dumps: one crashed rank can write tens of GB
@@ -48,7 +48,7 @@ run () { # name, srun options..., then -- and scaling.jl options
     while [ "$1" != "--" ]; do opts+=("$1"); shift; done; shift
     echo; echo "=== $name: srun ${opts[*]} ... $*"
     { echo "# run=$name job=$SLURM_JOB_ID"
-      srun "${opts[@]}" julia --project="$ENV_DIR" -t 4 mpi/scaling.jl --case=tgv --log2p="$P" \
+      srun --time="${RUN_MINUTES:-10}" "${opts[@]}" julia --project="$ENV_DIR" -t 4 mpi/scaling.jl --case=tgv --log2p="$P" \
           --steps="$STEPS" --warmup=0 --check="$CHECK" --out="$DIR/$name.csv" "$@"; } > "$DIR/$name.txt" 2>&1
     grep -E "Info: (SERIAL|MPI np)|^WaterLily|^MPI:|Warn|ERROR|[Ee]rror|srun:|signal|[Kk]illed" "$DIR/$name.txt" || echo "[ FAILED: $name ]"
 }
@@ -63,9 +63,9 @@ for e in $EPS; do
     run "fd64_plus_${e}_gpu_np8"  -N 2 -n 8 -- $GPU $F64 --Re="$(re "$e" 1)"
     run "fd64_minus_${e}_gpu_np8" -N 2 -n 8 -- $GPU $F64 --Re="$(re "$e" -1)"
 done
-WATERLILY_GPU_AWARE_MPI=1 run ad_gpu_np8_device -N 2 -n 8 -- $GPU --partials=1
 run f32_gpu_np8       -N 2 -n 8 -- $GPU
 run ad_cpu_np8        -N 2 -n 8 -- --backend=Array --partials=1
+WATERLILY_GPU_AWARE_MPI=1 run ad_gpu_np8_device -N 2 -n 8 -- $GPU --partials=1  # last: no Dual halo has gone device to device here
 
 { echo; echo "=== 1. Float64, converged pressure solve: AD on 8 GPUs against AD on one GPU without MPI (dKE_dnu is the derivative)"
   julia mpi/check.jl "$DIR"/ad64_gpu_serial.csv "$DIR"/ad64_gpu_np8.csv

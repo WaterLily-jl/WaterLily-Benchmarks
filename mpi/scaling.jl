@@ -63,7 +63,7 @@ const check   = parse(Int, arg("check", "0"))
 const outfile = arg("out", "")
 const profile = flag("profile")
 const cpuprofile = flag("cpuprofile")
-const laps    = flag("laps")
+const halo_laps = flag("laps")
 const poisson_kwargs = (; (Symbol(k) => parse(F, arg(k, "")) for (k, F) in ("tol" => Float64, "itmx" => Int) if !isempty(arg(k, "")))...)
 case in ("tgv", "sphere") || error("unknown --case=$case: use tgv or sphere")
 (Npart > 0 && case != "tgv") && error("--partials needs --case=tgv")
@@ -116,10 +116,10 @@ const halo = !use_mpi ? "none" : isdefined(WaterLily, :HaloBackend) ?
 const igg = halo == "igg"  # the halos are ImplicitGlobalGrid's
 
 # ── Halo timers (--laps): WaterLily's exchange with the time of each phase ─────────────────────────────
-const phases = ("wait", "pack", "post", "work", "wait_recv", "unpack", "wait_send")
+const lap_phases = ("wait", "pack", "post", "work", "wait_recv", "unpack", "wait_send")
 const lap_sync = get(ENV, "LAPS_SYNC", "1") != "0"
 const lap_log = Dict{Any,Vector{NTuple{7,Float64}}}()  # (size, eltype) of the array => the phases of each call, in us
-if laps
+if halo_laps
     halo == "native" && isdefined(Base.get_extension(WaterLily, :WaterLilyMPIExt), :_exchange!) ||
         error("--laps times WaterLily's own halo exchange (mpi-igg since 57443f8): it needs MPI ranks and not WATERLILY_HALO=igg")
     @eval Base.get_extension(WaterLily, :WaterLilyMPIExt) function _exchange!(work, a, h)
@@ -142,7 +142,7 @@ if laps
     end
 end
 # Rank 0 prints, per array, the calls per timed step and the median over the ranks of the mean time of each phase
-function print_laps()
+function print_halo_laps()
     isempty(lap_log) && error("--laps recorded no halo: is a dimension split across the ranks?")
     name(k) = "$(join(k[1], "x")) $(k[2] <: FD.Dual ? "Dual$(FD.npartials(k[2]))" : k[2])"
     ks = sort!(collect(keys(lap_log)), by=k -> (-prod(k[1]), name(k)))  # the same arrays on every rank
@@ -152,14 +152,14 @@ function print_laps()
     all_ = reshape(all_, 8, length(ks), :); med(x) = sort(vec(x))[(length(x) + 1) ÷ 2]
     println("Halos per timed step: calls, then the median over the ranks of the mean time of each phase per call (us); " *
             "ms/step without `wait` and `work`")
-    @printf("%-24s %6s%s %9s\n", "array", "calls", join(lpad.(phases, 10)), "ms/step")
+    @printf("%-24s %6s%s %9s\n", "array", "calls", join(lpad.(lap_phases, 10)), "ms/step")
     total = zeros(8); cost = [j ∉ (1, 4) for j in 1:7]  # all phases but `wait` and `work`
     for (i, k) in enumerate(ks)
         c, p = med(all_[1, i, :]), [med(all_[j+1, i, :]) for j in 1:7]
         total .+= [c; c .* p ./ 1e3]
         @printf("%-24s %6.1f%s %9.3f\n", name(k), c, join(lpad.(round.(p, digits=1), 10)), c*sum(p[cost])/1e3)
     end
-    @info "HALO  calls=$(round(total[1], digits=1))  " * join(("$ph=$(@sprintf("%.3f", total[j+1]))" for (j, ph) in enumerate(phases)), "  ") *
+    @info "HALO  calls=$(round(total[1], digits=1))  " * join(("$ph=$(@sprintf("%.3f", total[j+1]))" for (j, ph) in enumerate(lap_phases)), "  ") *
           "  halo=$(@sprintf("%.3f", sum(total[2:end][cost])))ms  sync=$(Int(lap_sync))"
 end
 
@@ -313,5 +313,5 @@ if me == 0
     end
 end
 halo_timers && ImplicitGlobalGrid.halo_trace(per=Nsteps, unit="step")
-laps && print_laps()
+halo_laps && print_halo_laps()
 igg_grid && finalize_global_grid()

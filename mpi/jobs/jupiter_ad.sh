@@ -5,7 +5,7 @@
 #SBATCH --cpus-per-task=72
 #SBATCH --gpus-per-task=1
 #SBATCH --gres=gpu:4  # with --gpus-per-task, or Slurm rejects the GRES it adds by default
-#SBATCH --time=00:45:00
+#SBATCH --time=01:00:00
 #SBATCH --output=wl-ad-%j.out
 
 # Forward-mode AD (ForwardDiff.Dual, mpi/scaling.jl --partials) against Float32 on JUPITER GPUs, TGV, one rank per
@@ -28,6 +28,8 @@
 #                                      the solver stops on the residual of the values, not of the partials, and
 #                                      the derivative needs more iterations than WaterLily's 2e-3 gives (empty: skip)
 #   AD_ARGS           []               more options of scaling.jl for every run
+#   RUN_MINUTES       [10]             the time limit of each run (srun --time), so that one that hangs does not
+#                                      take the rest of the job with it
 #   STEPS [100], WARMUP [20], WATERLILY_ENV [mpi]
 # The runs with the tolerance, more partials and device to device come last, so that a time limit cuts them first. Every run writes
 # its output to data/mpi/jupiter_ad_<job>/<point>_<run>.txt; the job prints their table and writes runs.csv there
@@ -59,7 +61,7 @@ run () { # NAME NP PARTIALS GPU_AWARE [scaling.jl options]: one run, its whole o
     local nodes=$(( (np + 3) / 4 )) serial=""; [ "$np" -eq 1 ] && serial="--serial"
     if [ "$nodes" -gt "$N" ]; then echo "[ SKIPPED $name: needs $nodes nodes ]"; return; fi
     { echo "# run=$name job=$SLURM_JOB_ID nodes=$nodes"
-      WATERLILY_GPU_AWARE_MPI="$aware" srun -N "$nodes" -n "$np" julia --project="$ENV_DIR" -t 4 mpi/scaling.jl --case=tgv \
+      WATERLILY_GPU_AWARE_MPI="$aware" srun --time="${RUN_MINUTES:-10}" -N "$nodes" -n "$np" julia --project="$ENV_DIR" -t 4 mpi/scaling.jl --case=tgv \
           --backend=CuArray --steps="$STEPS" --warmup="$WARMUP" --partials="$partials" $serial "$@" ${AD_ARGS:-}; } > "$DIR/$name.txt" 2>&1
     printf "%-30s %s\n" "$name" "$(grep -h "Info: \(SERIAL\|MPI np\)" "$DIR/$name.txt" | sed 's/.*Info: //; s/  case.*per_step=/ /; s/ levels=[0-9]*//; s/cost.*partials/partials/' || true)"
     grep -q "per_step=" "$DIR/$name.txt" || { echo "[ FAILED: $name ]"; grep -hE "ERROR|[Ee]rror|srun:|signal|[Kk]illed" "$DIR/$name.txt" | head -5; }
