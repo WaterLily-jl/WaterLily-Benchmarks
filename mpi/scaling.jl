@@ -18,6 +18,9 @@
 #   --partials=N        [0]   ForwardDiff.Dual numbers of N partials on top of --T (tgv only): partial 1 is d/dν,
 #                             partial 2 d/dU (the amplitude of the initial velocity), the others repeat d/dν
 #   --Re=x              [1600 tgv, 3700 sphere]  Reynolds number (ν(1±ε) for finite differences: Re/(1±ε))
+#   --tol=x --itmx=n          tolerance and largest number of iterations of the pressure solver (WaterLily's by
+#                             default: 2e-3, 32). A finite difference needs a converged solve (--tol=1e-9 in Float64):
+#                             the solver's stopping test and adaptive relaxation make the result jump with ν otherwise
 #   --steps=n [100] --warmup=n [20]  timed and untimed steps
 #   --check=k           [0]   print and save the global diagnostics every k steps (0: timing only); with --partials
 #                             also their derivatives (dKE_dnu, ...), which mpi/check.jl compares
@@ -61,6 +64,7 @@ const outfile = arg("out", "")
 const profile = flag("profile")
 const cpuprofile = flag("cpuprofile")
 const laps    = flag("laps")
+const poisson_kwargs = (; (Symbol(k) => parse(F, arg(k, "")) for (k, F) in ("tol" => Float64, "itmx" => Int) if !isempty(arg(k, "")))...)
 case in ("tgv", "sphere") || error("unknown --case=$case: use tgv or sphere")
 (Npart > 0 && case != "tgv") && error("--partials needs --case=tgv")
 const Re = let r = arg("Re", case == "tgv" ? "1600" : "3700"); something(tryparse(Int, r), parse(Float64, r)); end
@@ -237,6 +241,7 @@ devices = use_mpi ? MPI.gather(devices, comm) : [devices]
 if me == 0
     println("WaterLily $(pkgversion(WaterLily)) ($(commit(pkgdir(WaterLily)))), WaterLily-Benchmarks $(first(commit(dirname(@__DIR__)), 7)), " *
             "Julia $VERSION, backend $(WaterLily.backend), $bname, $V, partials=$Npart")
+    isempty(poisson_kwargs) || println("pressure solver: $poisson_kwargs")
     if use_mpi
         println("MPI: $(first(split(MPI.Get_library_version(), '\n'))), has_cuda=$(MPI.has_cuda()), halo=$halo, " *
                 (igg ? "IGG_CUDAAWARE_MPI=$(get(ENV, "IGG_CUDAAWARE_MPI", "unset"))" :
@@ -250,12 +255,13 @@ end
 # ── Run ────────────────────────────────────────────────────────────────────────────────────────────────
 sync() = bname == "CuArray" && CUDA.synchronize()
 barrier() = (sync(); use_mpi && MPI.Barrier(comm))
-for s in 1:Nwarmup; sim_step!(sim; remeasure=false); record!(s); end
+step!() = isempty(poisson_kwargs) ? sim_step!(sim; remeasure=false) : sim_step!(sim; remeasure=false, poisson_kwargs)
+for s in 1:Nwarmup; step!(); record!(s); end
 GC.gc(); barrier()
 const halo_timers = igg && get(ENV, "IGG_TRACE", "0") != "0" && isdefined(ImplicitGlobalGrid, :halo_trace)
 halo_timers && ImplicitGlobalGrid.halo_trace_reset!()
 empty!(lap_log)
-timed_steps() = (for s in Nwarmup+1:Nwarmup+Nsteps; sim_step!(sim; remeasure=false); record!(s); end; barrier())
+timed_steps() = (for s in Nwarmup+1:Nwarmup+Nsteps; step!(); record!(s); end; barrier())
 prof = nothing  # the CUDA.@profile summary (nothing under an external profiler)
 cpuprofile && (using Profile; Profile.init(n=10^7, delay=0.0005))
 t = @elapsed if profile

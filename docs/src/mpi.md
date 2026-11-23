@@ -5,13 +5,14 @@
 | File | What it does |
 |---|---|
 | `mpi/setup.jl` | builds the `mpi/` environment (or another one, `--env`): WaterLily from `$WATERLILY_DIR`, MPI.jl bound to the system MPI, the WaterLily backend |
-| `mpi/scaling.jl` | times `sim_step!` of a case on every rank and prints the time per step; `--check` also records global diagnostics |
-| `mpi/check.jl` | compares the diagnostics of several runs with a reference run |
+| `mpi/scaling.jl` | times `sim_step!` of a case on every rank and prints the time per step and the memory per cell; `--check` also records global diagnostics, `--partials` runs `ForwardDiff.Dual` numbers, `--laps` times the phases of WaterLily's halo exchange |
+| `mpi/check.jl` | compares the diagnostics of several runs with a reference run, and the derivatives of an AD run with finite differences (`--fd`) |
+| `mpi/collect.jl` | one CSV row per run from the outputs of `scaling.jl` (a job's directory of them, or several) |
 | `mpi/cuda_mpi_test.jl` | checks the CUDA-aware MPI alone: correctness on device buffers, and the ping-pong speed of device against host buffers (the sizes in `PINGPONG_BYTES`; profile it with Nsight Systems to see how MPI moves device buffers) |
 | `mpi/halo_profile.jl` | profiles ImplicitGlobalGrid's `update_halo!` of WaterLily-sized device arrays alone: time per call, the CUDA calls and kernels behind it (`CUDA.@profile`), and where the host spends the time (Julia's profiler); optionally without CUDA.jl's implicit synchronization between streams, or with the routine of WaterLily's `face_comm!` (all split dimensions at once, as in the Poisson iterations of WaterLily `12c339c`, the last whose halos were ImplicitGlobalGrid's; `CONCURRENT=1` needs that WaterLily) |
 | `mpi/halo_trace.jl` | times each phase of ImplicitGlobalGrid's `update_halo!` (packing, posting, waiting, unpacking), per dimension and rank, next to the bare MPI exchange of the same faces from plain, page-locked and device buffers; needs the timers of the ImplicitGlobalGrid fork (branch [`halo-trace`](https://github.com/b-fg/ImplicitGlobalGrid.jl/tree/halo-trace)) and `IGG_TRACE=1`, which also make `scaling.jl` print the time per step spent in `update_halo!`, by array size; with `IGG_FUSED=1` or `2` (fork branch [`halo-fused`](https://github.com/b-fg/ImplicitGlobalGrid.jl/tree/halo-fused)) the fused halo updates of CUDA arrays instead, and the updates split by `update_halo_start!` and `update_halo_finish!` (WaterLily branch `mpi-igg-overlap`, which overlaps the Poisson halos with their stencil loops; A/B in `mpi/jobs/jupiter_overlap_ab.sh`) under signatures of their own |
 | `mpi/plot_strong.jl`, `mpi/plot_weak.jl` | plot the scaling curves from the job outputs (with the `plotting` environment) |
-| `mpi/jobs/` | the environment and job scripts of each cluster (`jupiter_*`, `snellius_*`) and `submit.sh` |
+| `mpi/jobs/` | the environment and job scripts of each cluster (`jupiter_*`, `snellius_*`) and `submit.sh`; `jupiter_ad.sh` and `jupiter_ad_check.sh` are the forward-mode AD runs |
 | `mpi/fused/` | the environment of WaterLily branch `mpi-igg-fused` (its own halos, without ImplicitGlobalGrid) and its jobs, `mpi/fused/jobs/`; the branch is merged into `mpi-igg` (`57443f8`), so new runs use `mpi/` and this environment repeats the records |
 
 ## Setup
@@ -35,11 +36,14 @@ mpiexec -n 4 julia --project=mpi mpi/scaling.jl --case=tgv --log2p=7            
 srun -n 8 julia --project=mpi mpi/scaling.jl --case=tgv --log2p=8 --backend=CuArray   # 8 GPUs
 ```
 
-The cases are those of `src/cases.jl`: `tgv` is `tgv_periodic` (triply periodic, a `(2^p)^3` box) and `sphere` is the sphere with a convective exit (a `16D×6D×6D` box, `D = 2^p`). `--log2p` sets the global size; with `--weak` it is the size per rank, and the global grid grows with the number of ranks (each rank of the weak TGV holds one period). `--dims=a,b,c` gives the size in cells instead. Other options: `--backend=Array|CuArray`, `--T=Float32|Float64`, `--steps` and `--warmup` (timed and untimed steps), and `--serial` (no MPI, even under `srun`). Rank 0 prints
+The cases are those of `src/cases.jl`: `tgv` is `tgv_periodic` (triply periodic, a `(2^p)^3` box) and `sphere` is the sphere with a convective exit (a `16D×6D×6D` box, `D = 2^p`). `--log2p` sets the global size; with `--weak` it is the size per rank, and the global grid grows with the number of ranks (each rank of the weak TGV holds one period). `--dims=a,b,c` gives the size in cells instead. Other options: `--backend=Array|CuArray`, `--T=Float32|Float64`, `--partials=N` (`ForwardDiff.Dual` numbers, see [Forward-mode AD](@ref)), `--Re`, `--steps` and `--warmup` (timed and untimed steps), `--laps` (the halo timers, same section) and `--serial` (no MPI, even under `srun`). Rank 0 prints
 
 ```
-[ Info: MPI np=8  case=tgv  grid=256x256x256  local=128x128x128  100 steps  per_step=...ms  levels=7  mean_iters=1.0  cost=...ns/DOF/dt  backend=CuArray
+[ Info: MPI np=8  case=tgv  grid=256x256x256  local=128x128x128  100 steps  per_step=...ms  levels=7  mean_iters=1.0  cost=...ns/DOF/dt  backend=CuArray  T=Float32  partials=0
+[ Info: MEMORY  cells=2097152  arrays=...B/cell  halos=...B/cell  device=...MB  host_rss=...MB
 ```
+
+(the second line is the memory of its block: the bytes of the arrays of the simulation, ghost cells included, and of the halo plans and buffers, both per interior cell, then the memory in use on its GPU, which includes the CUDA context and any other process, and the peak resident memory of its process)
 
 after a header with the commits of WaterLily and of WaterLily-Benchmarks, the MPI library and the device of each rank. When every rank sees all the GPUs of its node, `init_waterlily_mpi` gives each node-local rank its own GPU (ImplicitGlobalGrid's `select_device` did up to WaterLily `12c339c`); when the launcher binds one GPU per rank (Slurm `--gpus-per-task=1`, the default on JUPITER), each rank keeps the one it sees. Check in the header that the ranks of a node show different GPUs. To test the GPU code paths on a machine with one GPU, let several ranks share it: `CUDA_VISIBLE_DEVICES=0 mpiexec -n 2 ...` (the timings are then meaningless).
 
@@ -89,3 +93,62 @@ julia --project=plotting mpi/plot_strong.jl --combine --out=data/mpi/jupiter_str
 `--combine` puts the curves of several directories in one figure, saved as `--out`. The colours are those of the ParCFD 2026 figures: one hue of `:lightrainbow` per case and size in the strong-scaling plots (TGV 512³ and 1024³ keep theirs from figure to figure), teal and red for the first two curves of a weak-scaling plot. The inset's x axis is log2 when its rank counts double, and linear for half-node steps.
 
 On Snellius, `WATERLILY_RPN` sets the ranks per node (default 64), spread evenly over the CCXs of each node. On JUPITER there is one rank per GPU, 4 per node. `jupiter_cpu` runs `mpi/jobs/jupiter_cpu_scaling.sh` on the CPUs of the JUPITER nodes (4 Grace CPUs of 72 cores): one thread per rank, `WATERLILY_RPN` ranks per node (default 256, which splits the `2^p` grids, unlike all 288 cores), the same number on each Grace CPU, spread evenly over its cores. The job prints the NUMA nodes of the first node, to check that the cores of each Grace CPU are numbered as the binding assumes.
+
+## Forward-mode AD
+
+`--partials=N` runs the TGV with `ForwardDiff.Dual` numbers of `N` partials on top of `--T`, taken from WaterLily's own ForwardDiff, so the environment needs no package: partial 1 seeds the viscosity (d/dν), partial 2 the amplitude of the initial velocity (d/dU), and the others repeat d/dν (their cost and memory are what they are for). With `--check` the records also hold `nu` and the derivatives of the reduced diagnostics (`dKE_dnu`, `denstrophy_dnu`, `dumax_dnu`, `dpmax_dnu`, and `..._dU` from two partials on), which `mpi/check.jl` compares like the other columns, also between runs with different columns (the values of a run with partials against a run without). The functional is the diagnostic after a fixed number of time steps, whose sizes depend on ν through the CFL condition. `--Re` sets the Reynolds number (ν(1±ε) is `--Re=1600/(1±ε)`), and `--tol` and `--itmx` the tolerance and the largest number of iterations of the pressure solver (WaterLily's `poisson_kwargs`; by default its own `2e-3` and 32).
+
+```sh
+mpiexec -n 8 julia --project=mpi mpi/scaling.jl --log2p=6 --steps=50 --warmup=0 --check=10 --partials=1 --out=ad_np8.csv
+julia mpi/check.jl ad_serial.csv ad_np8.csv                    # AD on 8 ranks against serial AD: largest and last difference
+julia mpi/check.jl --fd ad64_np8.csv plus_np8.csv minus_np8.csv  # AD against (q₊ - q₋)/(ν₊ - ν₋) of two runs without partials
+```
+
+Three things decide what such a comparison shows (TGV `64^3` from its initial condition over 50 steps, a laminar horizon, on a laptop: serial and 1, 2, 4, 8 CPU ranks, WaterLily `43df5e6`, `SIMD` backend):
+
+- **The pressure tolerance limits the derivative before anything else does.** The solver stops on the residual of the values and never looks at the partials, so with WaterLily's tolerance (`2e-3`, one V-cycle per solve here) `dKE_dnu` of the last record is 3.4 % from its converged value, while the kinetic energy is `9e-5` from its own. With `--tol=2e-4` (2 V-cycles) the derivative is `5.6e-3` away, with `2e-5` (3.3) `3.3e-3`, and from `2e-6` on (4.5) converged to the six digits printed in `Float64` (in `Float32` `1e-3` at `2e-6` and `9e-5` at `1e-7`, 6.3 V-cycles). This holds without MPI. The times per step of `Dual` against `Float32` at the default tolerance are therefore times of a derivative with that error; `--tol` times an accurate one.
+- **AD against finite differences needs `Float64`, a converged pressure solve and a small step.** At the default tolerance the stopping test and the adaptive relaxation of the solver make the result jump with ν, which a difference sees and AD does not (`1e-3` between the two, serial). With `--tol=1e-9` the central difference of the serial run agrees with AD to `3e-7` at ε = `1e-5`, but to `1e-3` at ε = `1e-4`, whatever the tolerance: the scheme is piecewise smooth (the time step is a maximum over the cells, the QUICK limiter a median, and the one-sided fluxes at the rank faces switch with the sign of the velocity), and a difference across a kink averages two slopes. On 4 ranks the difference falls from `7e-4` (ε = `1e-4`) through `3e-4` and `2e-5` to `5e-7` (ε = `1e-7`), and `--tol=1e-12` changes none of it down to ε = `1e-6`; on 2 and 8 ranks it is `2e-5` at ε = `1e-5`. `check.jl --fd` warns when the Poisson iterations of the three runs differ.
+- **AD on several ranks against serial AD also holds the decomposition.** MPI on one rank is identical to serial, partials included, and the values of a `Dual` run equal those of a `Float32` run within round-off (`8e-7`). With converged solves (`Float64`, `--tol=1e-9`) `dKE_dnu` on 2, 4 and 8 ranks is `2.9e-3`, `3.3e-3` and `3.3e-3` from serial, and the kinetic energy `2.6e-5`, `3.2e-5` and `3.2e-5`: the one-sided convection stencil at the rank faces, about the same absolute change in both (the derivative is small, `ν dKE/dν` is 2.6 % of the kinetic energy). At the default tolerance (`Float32` or `Float64`) the same comparison gives `4e-2` in the last record and `1e-4` in the four before it, which is the tolerance effect of the first point, not MPI.
+
+### Halo timers and memory
+
+`--laps` times the phases of every halo of WaterLily's own exchange during the timed steps, with a copy of its routine (`_exchange!` of `WaterLilyMPIExt`, `mpi-igg` since `57443f8`; `mpi/fused/halo_diag.jl` does the same for branch `mpi-igg-fused`). Rank 0 prints, per array, the calls per step and the median over the ranks of the mean time per call of `wait` (the kernels launched before the halo), `pack`, `post` (the receives and sends), `work` (the loop that overlaps the messages), `wait_recv`, `unpack` and `wait_send`, then one line with their sums in ms per step, where `halo` is all of them but `wait` and `work`:
+
+```
+[ Info: HALO  calls=52.0  wait=...  pack=...  post=...  work=...  wait_recv=...  unpack=...  wait_send=...  halo=...ms  sync=1
+```
+
+The run synchronizes the backend around the pack, the overlapped loop and the unpack, so that each phase holds its own GPU time (the routine itself synchronizes once, after the pack, and does not wait for the unpack). So a run with `--laps` is not the timing of the step: the halo share is `halo` over the time per step of the same run. `wait_recv` also holds the time a rank waits for a slower neighbour to reach its sends. `LAPS_SYNC=0` leaves the routine's single synchronization, and `pack` then includes the wait for the kernels launched before the halo, as in the laps of `mpi/fused/halo_diag.jl`.
+
+The `MEMORY` line gives the bytes of the arrays of the simulation per interior cell of the rank's block (the ghost cells are in the bytes, so the figure falls slightly with the size) and those of the halo plans (index lists and buffers). In 3D `Float32` the arrays take 151.8 B per interior cell at `32^3`, 138.0 at `64^3` and 131.5 at `128^3` (about 126 B per cell of the padded block: 26 fields of the flow, 4 more of the top multigrid level, and 9 per coarser level). A `Dual` with `N` partials takes `N + 1` times that, exactly: 262.9 B per cell with one partial and 657.2 with four at `128^3`.
+
+### JUPITER jobs
+
+`mpi/jobs/jupiter_ad.sh` runs, at every point, `Float32`, `Dual` (`AD_PARTIALS`, default 1) and `Float32` again back to back in one allocation and at one WaterLily commit (the two `Float32` runs give the scatter of the ratio; between allocations the same point has varied by 20 %), then both with `--laps`; then, last, so that a time limit cuts them first, both at the weak points with a pressure tolerance that converges the derivative (`AD_TOL`, default `2e-6`), more partials (`AD_MORE_PARTIALS`, default 4 up to 2 nodes) and every eltype with device-to-device halos (`AD_DEVICE`, on up to 2 nodes). Each argument is a set of points, `"MODE LOG2P NP [NP ...]"`; without arguments a job on one node runs `"weak 7 1" "weak 8 1 4"` (one GPU at `128^3` and `256^3`, 4 GPUs at `256^3` each) and a job on `N` nodes `"weak 8 4N" "strong 9 4N"`. `mpi/jobs/jupiter_ad_check.sh` (2 nodes) is the correctness check: AD on 8 GPUs against AD on one GPU with converged solves, AD against finite differences on 8 GPUs for three ε, and, at the settings of the timed runs, AD on 1, 4 and 8 GPUs against one GPU without MPI, device-to-device against staged halos, the values against a `Float32` run and 8 CPU ranks.
+
+```sh
+sbatch -A <budget> --reservation=develbooster mpi/jobs/jupiter_ad_check.sh     # 2 nodes: correctness, about 20 min
+sbatch -A <budget> --reservation=develbooster -N 1 mpi/jobs/jupiter_ad.sh      # 1 and 4 GPUs, about 30 min
+sbatch -A <budget> --reservation=develbooster -N 2 mpi/jobs/jupiter_ad.sh      # 8 GPUs, about 30 min
+sbatch -A <budget> -N 8 --time=00:40:00 mpi/jobs/jupiter_ad.sh                 # 32 GPUs
+sbatch -A <budget> -N 16 --time=00:40:00 mpi/jobs/jupiter_ad.sh                # 64 GPUs
+julia mpi/collect.jl --out=data/mpi/jupiter_ad.csv data/mpi/jupiter_ad_*       # one row per run of all the jobs
+```
+
+Every run writes its whole output to `data/mpi/jupiter_ad_<job>/<point>_<run>.txt`, and the job prints the table of its runs and writes `runs.csv` there. `mpi/collect.jl` reads everything from what the runs printed, not from file names: the commits, the eltype and its partials, the ranks, the mode and the sizes, the time per step, the mean Poisson iterations, the pressure tolerance when set, the transport (`gpu_aware`), the halo phases of a run with `--laps` and the memory. `ms_ratio` and `mem_ratio` relate a run with partials to the mean of the `Float32` runs of the same job and point, and `iters_differ` flags a pair whose Poisson iterations differ (the ratio then holds another amount of work). It also reads the job outputs of `mpi/jobs/submit.sh`, several runs per file. The check job writes to `data/mpi/jupiter_adcheck_<job>/`, with its tables in `summary.txt`; its runs have no warm-up, so they are no timings.
+
+### One GPU on a laptop
+
+The same runs on one laptop GPU (RTX 4060, 8 GB; WaterLily `43df5e6`, CUDA.jl 6.5.1, KernelAbstractions 0.10, TGV, 100 timed steps after 20, no MPI), as `julia --project=mpi mpi/scaling.jl --backend=CuArray --log2p=7 [--partials=N] [--tol=2e-6]`:
+
+| TGV | eltype | pressure tolerance | ms per step | V-cycles per solve | arrays, B per cell | against `Float32` (time, memory) |
+|---|---|---|---|---|---|---|
+| `128^3` | `Float32` | default | 23.1 and 23.7 | 1.0 | 131.5 | |
+| `128^3` | `Dual`, 1 partial | default | 44.6 | 1.0 | 262.9 | 1.91, 2.00 |
+| `128^3` | `Dual`, 4 partials | default | 109.2 | 1.0 | 657.2 | 4.67, 5.00 |
+| `128^3` | `Float32` | `2e-6` | 48.4 | 4.2 | 131.5 | |
+| `128^3` | `Dual`, 1 partial | `2e-6` | 82.0 | 4.2 | 262.9 | 1.70, 2.00 |
+| `256^3` | `Float32` | default | 180.3 and 180.2 | 1.0 | 128.3 | |
+| `256^3` | `Dual`, 1 partial | default | 358.3 | 1.0 | 256.5 | 1.99, 2.00 |
+
+A derivative converged in the pressure tolerance costs 3.5 times the `Float32` step at the default tolerance here (82.0 against 23.4 ms). On 1 and 2 ranks sharing that GPU (TGV `64^3`, 50 steps, `Float32`, default tolerance) MPI on one rank is identical to the run without MPI, partials included, the values of the `Dual` run equal a `Float32` run to `4e-7`, and 2 ranks differ from one GPU as the CPU ranks do (`1.9e-5` in kinetic energy, `4e-2` in `dKE_dnu` of the last record). Runs that differ only by round-off (4 partials against 1, CPU against GPU ranks) agree to `8e-5` in `dKE_dnu` and `3e-5` in the kinetic energy, and `dKE_dU` starts at `2 KE/U`. `test/test_forwarddiff.jl` of WaterLily passes on `Array` and `CuArray` at that commit (15 tests).

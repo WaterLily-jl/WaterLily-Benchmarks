@@ -5,16 +5,17 @@
 #
 # Everything comes from what the run printed (its header, the `Info:` line, `MEMORY` and, with --laps, `HALO`), not from
 # file names: the commits, the eltype and its partials, the ranks, the sizes, the time per step, the Poisson
-# iterations, the bytes per cell and the halo phases (ms per step). `job` is the Slurm job of a `# run=... job=...`
-# line, which the job scripts write before each run. `ms_ratio` and `mem_ratio` compare a run with the mean of the
-# Float runs without partials of the same job, case, mode, sizes, ranks, transport and timers (`iters_differ` is 1
+# iterations, the pressure tolerance when set (`tol`), the bytes per cell and the halo phases (ms per step). `job` is
+# the Slurm job of a `# run=... job=...` line, which the job scripts write before each run. `ms_ratio` and `mem_ratio`
+# compare a run with the mean of the Float runs without partials of the same job, case, mode, sizes, ranks,
+# tolerance, transport and timers (`iters_differ` is 1
 # when their Poisson iterations are not those of the run, so that the ratio also holds another amount of work).
 # --out writes the CSV to a file instead of the standard output, --table prints the main columns aligned.
 # Plain Julia, no packages.
 using Printf
 
 const columns = (:file, :job, :waterlily, :benchmarks, :case, :mode, :launch, :np, :T, :partials, :grid, :local, :cells,
-    :steps, :ms_per_step, :mean_iters, :levels, :backend, :halo_backend, :gpu_aware, :laps, :halo_ms, :halo_calls,
+    :steps, :ms_per_step, :mean_iters, :levels, :tol, :backend, :halo_backend, :gpu_aware, :laps, :halo_ms, :halo_calls,
     :wait_ms, :pack_ms, :post_ms, :work_ms, :wait_recv_ms, :unpack_ms, :wait_send_ms, :laps_sync, :arrays_B_per_cell,
     :halos_B_per_cell, :device_MB, :host_rss_MB, :ms_ratio, :mem_ratio, :iters_differ, :device, :mpi)
 keyvals(line) = Dict(String(m[1]) => String(m[2]) for m in eachmatch(r"(\w+)=([^\s,]+)", line))
@@ -35,6 +36,8 @@ function runs(file)
             kv = keyvals(line); r[:mpi] = strip(replace(m[1], "=" => "", "," => " "))
             r[:halo_backend] = get(kv, "halo", "igg")
             r[:gpu_aware] = get(kv, "WATERLILY_GPU_AWARE_MPI", get(kv, "IGG_CUDAAWARE_MPI", ""))
+        elseif startswith(line, "pressure solver:")
+            r[:tol] = get(keyvals(replace(line, " = " => "=", ")" => "")), "tol", "")
         elseif (m = match(r"^  rank 0: (.*)", line)) !== nothing
             r[:device] = replace(strip(m[1]), "," => " ")
         elseif (m = match(r"Info: (SERIAL|MPI np=(\d+))\s+case=", line)) !== nothing
@@ -59,7 +62,7 @@ end
 
 # The ratios of each run to the Float runs without partials of its point
 function ratios!(rows)
-    num(r, c) = parse(Float64, r[c]); point(r) = map(c -> get(r, c, ""), (:job, :case, :mode, :grid, :np, :launch, :T, :gpu_aware, :laps, :backend))
+    num(r, c) = parse(Float64, r[c]); point(r) = map(c -> get(r, c, ""), (:job, :case, :mode, :grid, :np, :launch, :T, :tol, :gpu_aware, :laps, :backend))
     for r in rows
         base = filter(b -> b[:partials] == "0" && point(b) == point(r), rows)
         (isempty(base) || r[:partials] == "0") && continue
@@ -76,12 +79,12 @@ files = reduce(vcat, [isdir(p) ? sort!(filter(endswith(".txt"), readdir(p; join=
 rows = reduce(vcat, runs.(files); init=Dict{Symbol,Any}[])
 isempty(rows) && error("no run of mpi/scaling.jl in $(join(paths, ", "))")
 ratios!(rows)
-sort!(rows, by=r -> (r[:job], r[:mode], r[:case], prod(parse.(Int, split(r[:local], "x"))), parse(Int, r[:np]), get(r, :gpu_aware, ""), r[:laps],
+sort!(rows, by=r -> (r[:job], r[:mode], r[:case], prod(parse.(Int, split(r[:local], "x"))), parse(Int, r[:np]), get(r, :tol, ""), get(r, :gpu_aware, ""), r[:laps],
                      parse(Int, r[:partials]), r[:file]))
 foreach(r -> r[:file] = basename(r[:file]), rows)
 
 if "--table" in ARGS
-    cols = (:file, :np, :T, :partials, :grid, :local, :gpu_aware, :ms_per_step, :ms_ratio, :mean_iters, :halo_ms, :arrays_B_per_cell, :mem_ratio)
+    cols = (:file, :np, :T, :partials, :grid, :local, :gpu_aware, :tol, :ms_per_step, :ms_ratio, :mean_iters, :halo_ms, :arrays_B_per_cell, :mem_ratio)
     w = [max(length(string(c)), maximum(r -> length(string(get(r, c, ""))), rows)) + 2 for c in cols]
     println(join(rpad.(string.(cols), w)))
     foreach(r -> println(join(rpad.([string(get(r, c, "")) for c in cols], w))), rows)
