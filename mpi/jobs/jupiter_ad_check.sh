@@ -29,7 +29,7 @@
 # The runs write to data/mpi/jupiter_adcheck_<job>/ (their diagnostics as .csv, the tables below as summary.txt).
 # Submit from the repository root (it fits in the develbooster reservation):
 #
-#   sbatch -A <budget> --reservation=develbooster mpi/jobs/jupiter_ad_check.sh [LOG2P=7] [STEPS=100] [CHECK=10]
+#   sbatch --reservation=develbooster mpi/jobs/jupiter_ad_check.sh [LOG2P=7] [STEPS=100] [CHECK=10]
 #
 # Variables: EPS ["1e-5 1e-6 1e-7"], TOL [1e-9], RUN_MINUTES [10] (the time limit of each run), WATERLILY_ENV [mpi].
 

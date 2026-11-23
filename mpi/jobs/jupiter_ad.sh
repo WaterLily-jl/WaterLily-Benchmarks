@@ -13,7 +13,7 @@
 # Float32, Dual with each number of partials of AD_PARTIALS, Float32 again (the two Float32 runs give the scatter of
 # the ratio), then Float32 and the first of AD_PARTIALS with the halo timers (--laps). Submit from the repository root:
 #
-#   sbatch -A <budget> -N <nodes> mpi/jobs/jupiter_ad.sh ["MODE LOG2P NP [NP ...]" ...]
+#   sbatch -N <nodes> mpi/jobs/jupiter_ad.sh ["MODE LOG2P NP [NP ...]" ...]
 #
 # Each argument is a set of points: MODE strong (LOG2P sets the global size) or weak (the size per GPU), and the
 # numbers of GPUs (1 runs without MPI). Without arguments, the points of the node count, which make the weak curve at
