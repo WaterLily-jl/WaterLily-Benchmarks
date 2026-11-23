@@ -15,10 +15,19 @@
 #   --weak                    weak scaling: the size is per rank and the global grid grows with the number of ranks
 #   --backend=Array|CuArray [Array]
 #   --T=Float32|Float64 [Float32]
+#   --partials=N        [0]   ForwardDiff.Dual numbers of N partials on top of --T (tgv only): partial 1 is d/dν,
+#                             partial 2 d/dU (the amplitude of the initial velocity), the others repeat d/dν
+#   --Re=x              [1600 tgv, 3700 sphere]  Reynolds number (ν(1±ε) for finite differences: Re/(1±ε))
 #   --steps=n [100] --warmup=n [20]  timed and untimed steps
-#   --check=k           [0]   print and save the global diagnostics every k steps (0: timing only)
+#   --check=k           [0]   print and save the global diagnostics every k steps (0: timing only); with --partials
+#                             also their derivatives (dKE_dnu, ...), which mpi/check.jl compares
 #   --out=file.csv            where rank 0 writes the diagnostics of --check
 #   --serial                  run serial even under an MPI launcher (a reference run inside a Slurm job)
+#   --laps                    time the phases of every halo of WaterLily's own exchange in the timed steps (a copy of
+#                             its routine with timers): rank 0 prints them by array and their sum per step. The
+#                             backend is synchronized around the pack, the overlapped loop and the unpack, so that
+#                             each phase holds its own GPU time; LAPS_SYNC=0 leaves the routine's one synchronization,
+#                             and the pack then also waits for the kernels launched before the halo
 #   --profile                 profile the timed steps with CUDA.@profile (CuArray): rank 0 prints the summary of the
 #                             API calls and kernels; under `nsys profile --capture-range=cudaProfilerApi` it marks them
 #   --cpuprofile              sample the timed steps with Julia's profiler: rank 0 prints where the main thread spends
@@ -28,8 +37,12 @@
 # that the timed steps spent in update_halo!, by array size, phase and dimension (ImplicitGlobalGrid.halo_trace), when
 # ImplicitGlobalGrid carries the halos (WATERLILY_HALO=igg, or WaterLily up to 12c339c).
 #
-# Rank 0 prints one line per run, which mpi/plot_strong.jl and mpi/plot_weak.jl read:
+# Rank 0 prints one line per run, which mpi/plot_strong.jl, mpi/plot_weak.jl and mpi/collect.jl read, and the memory
+# of its block: the bytes per cell of the arrays of the simulation and of the halo plans and buffers, the memory in use
+# on its GPU (the CUDA context and other processes included) and the peak resident memory of its process:
 #   [ Info: MPI np=8  case=tgv  grid=256x256x256  local=128x128x128  100 steps  per_step=12.3ms  ...
+#   [ Info: MEMORY  cells=2097152  arrays=143.1B/cell  halos=1.2B/cell  device=310.2MB  host_rss=2100.0MB
+#   [ Info: HALO  calls=52.0  wait=..  pack=..  post=..  work=..  wait_recv=..  unpack=..  wait_send=..  halo=8.1ms  (--laps)
 using StaticArrays, Printf, LibGit2
 
 arg(key, default) = (i = findlast(a -> startswith(a, "--$key="), ARGS); isnothing(i) ? default : split(ARGS[i], "="; limit=2)[2])
@@ -39,14 +52,18 @@ const case    = arg("case", "tgv")
 const log2p   = parse(Int, arg("log2p", "6"))
 const weak    = flag("weak")
 const bname   = arg("backend", "Array")
-const T       = Dict("Float32" => Float32, "Float64" => Float64)[arg("T", "Float32")]
+const V       = Dict("Float32" => Float32, "Float64" => Float64)[arg("T", "Float32")]  # the eltype, or its value type
+const Npart   = parse(Int, arg("partials", "0"))
 const Nsteps  = parse(Int, arg("steps", "100"))
 const Nwarmup = parse(Int, arg("warmup", "20"))
 const check   = parse(Int, arg("check", "0"))
 const outfile = arg("out", "")
 const profile = flag("profile")
 const cpuprofile = flag("cpuprofile")
+const laps    = flag("laps")
 case in ("tgv", "sphere") || error("unknown --case=$case: use tgv or sphere")
+(Npart > 0 && case != "tgv") && error("--partials needs --case=tgv")
+const Re = let r = arg("Re", case == "tgv" ? "1600" : "3700"); something(tryparse(Int, r), parse(Float64, r)); end
 bname in ("Array", "CuArray") || error("unknown --backend=$bname: use Array or CuArray")
 (profile && bname != "CuArray") && error("--profile needs --backend=CuArray")
 
@@ -66,6 +83,12 @@ const mem = bname == "CuArray" ? CuArray : Array
 using WaterLily
 bname == "CuArray" && WaterLily.backend != "KernelAbstractions" &&
     error("GPU runs need the KernelAbstractions backend, this environment has \"$(WaterLily.backend)\": julia --project=mpi mpi/setup.jl --backend=KernelAbstractions")
+# Dual numbers from WaterLily's own ForwardDiff, so that the environment needs none
+const FD = WaterLily.ForwardDiff
+struct Seed end  # their tag
+const T = Npart == 0 ? V : FD.Dual{typeof(FD.Tag(Seed(), V)),V,Npart}
+const params = ("nu", "U")[1:min(Npart, 2)]  # the parameters of partials 1 and 2
+seeded(x, on) = Npart == 0 ? V(x) : T(V(x), FD.Partials(ntuple(k -> V(on(k)), Npart)))  # x with partial k = on(k)
 perdir = case == "tgv" ? (1, 2, 3) : ()
 if use_mpi
     using MPI
@@ -88,12 +111,60 @@ const halo = !use_mpi ? "none" : isdefined(WaterLily, :HaloBackend) ?
     (nameof(typeof(WaterLily.par_mode[].halo)) == :IGGHalo ? "igg" : "native") : igg_grid ? "igg" : "native"
 const igg = halo == "igg"  # the halos are ImplicitGlobalGrid's
 
+# ── Halo timers (--laps): WaterLily's exchange with the time of each phase ─────────────────────────────
+const phases = ("wait", "pack", "post", "work", "wait_recv", "unpack", "wait_send")
+const lap_sync = get(ENV, "LAPS_SYNC", "1") != "0"
+const lap_log = Dict{Any,Vector{NTuple{7,Float64}}}()  # (size, eltype) of the array => the phases of each call, in us
+if laps
+    halo == "native" && isdefined(Base.get_extension(WaterLily, :WaterLilyMPIExt), :_exchange!) ||
+        error("--laps times WaterLily's own halo exchange (mpi-igg since 57443f8): it needs MPI ranks and not WATERLILY_HALO=igg")
+    @eval Base.get_extension(WaterLily, :WaterLilyMPIExt) function _exchange!(work, a, h)
+        t0 = time_ns(); Main.lap_sync && _sync(a)  # the kernels launched before the halo: not its cost
+        t1 = time_ns(); WaterLily.pack!(h.s, a, h.S); _sync(a)
+        t2 = time_ns()
+        for (i, p) in enumerate(h.peers)
+            MPI.Irecv!(view(h.rh, h.ranges[i]), _comm(), h.rreq[i]; source=p, tag=0)
+        end
+        for (i, p) in enumerate(h.peers)
+            MPI.Isend(view(h.sh, h.ranges[i]), _comm(), h.sreq[i]; dest=p, tag=0)
+        end
+        t3 = time_ns(); work(); Main.lap_sync && _sync(a)  # the loop that overlaps the messages
+        t4 = time_ns(); MPI.Waitall(h.rreq)
+        t5 = time_ns(); WaterLily.unpack!(a, h.r, h.R); Main.lap_sync && _sync(a)
+        t6 = time_ns(); MPI.Waitall(h.sreq)
+        t = (t0, t1, t2, t3, t4, t5, t6, time_ns())
+        push!(get!(() -> NTuple{7,Float64}[], Main.lap_log, (size(a), eltype(a))), ntuple(k -> (t[k+1] - t[k])/1e3, 7))
+        return nothing
+    end
+end
+# Rank 0 prints, per array, the calls per timed step and the median over the ranks of the mean time of each phase
+function print_laps()
+    isempty(lap_log) && error("--laps recorded no halo: is a dimension split across the ranks?")
+    name(k) = "$(join(k[1], "x")) $(k[2] <: FD.Dual ? "Dual$(FD.npartials(k[2]))" : k[2])"
+    ks = sort!(collect(keys(lap_log)), by=k -> (-prod(k[1]), name(k)))  # the same arrays on every rank
+    row(v) = [length(v)/Nsteps; [sum(x -> x[j], v)/length(v) for j in 1:7]]
+    all_ = MPI.Gather(reduce(vcat, row.(getindex.(Ref(lap_log), ks))), comm; root=0)
+    me == 0 || return
+    all_ = reshape(all_, 8, length(ks), :); med(x) = sort(vec(x))[(length(x) + 1) ÷ 2]
+    println("Halos per timed step: calls, then the median over the ranks of the mean time of each phase per call (us); " *
+            "ms/step without `wait` and `work`")
+    @printf("%-24s %6s%s %9s\n", "array", "calls", join(lpad.(phases, 10)), "ms/step")
+    total = zeros(8); cost = [j ∉ (1, 4) for j in 1:7]  # all phases but `wait` and `work`
+    for (i, k) in enumerate(ks)
+        c, p = med(all_[1, i, :]), [med(all_[j+1, i, :]) for j in 1:7]
+        total .+= [c; c .* p ./ 1e3]
+        @printf("%-24s %6.1f%s %9.3f\n", name(k), c, join(lpad.(round.(p, digits=1), 10)), c*sum(p[cost])/1e3)
+    end
+    @info "HALO  calls=$(round(total[1], digits=1))  " * join(("$ph=$(@sprintf("%.3f", total[j+1]))" for (j, ph) in enumerate(phases)), "  ") *
+          "  halo=$(@sprintf("%.3f", sum(total[2:end][cost])))ms  sync=$(Int(lap_sync))"
+end
+
 # ── Cases (as in src/cases.jl, sized by the global grid) ───────────────────────────────────────────────
 function tgv(dims, gdims; Re=1600)
     # strong: one period over the global box (tgv_periodic); weak: one period per rank block, so the flow and
     # the work of every rank stay the same as the number of ranks grows
     L = weak ? dims[1] : gdims[1]
-    U = T(1); κ = T(2π/L); ν = T(1/(κ*Re))
+    κ = V(2π/L); U = seeded(1, ==(2)); ν = seeded(1/(κ*Re), !=(2))
     function u0(i, xyz)
         x, y, z = @. xyz*κ
         i == 1 && return -U*sin(x)*cos(y)*cos(z)
@@ -108,10 +179,12 @@ function sphere(dims, gdims; Re=3700, U=1)
     body = AutoBody((x, t) -> √sum(abs2, x .- center) - radius)
     Simulation(dims, (U, 0, 0), D; U, ν, body, T, mem, exitBC=true)
 end
-sim = case == "tgv" ? tgv(local_dims, gdims) : sphere(local_dims, gdims)
+sim = case == "tgv" ? tgv(local_dims, gdims; Re) : sphere(local_dims, gdims; Re)
 
 # ── Global diagnostics, reduced over all ranks ─────────────────────────────────────────────────────────
-gsum(a)  = WaterLily.global_allreduce(Float64(sum(a)))
+wide(x) = Float64(x)
+wide(x::FD.Dual{Tg,<:Any,N}) where {Tg,N} = convert(FD.Dual{Tg,Float64,N}, x)
+gsum(a)  = WaterLily.global_allreduce(wide(sum(a)))
 gmax(a)  = WaterLily.global_max(maximum(abs, a))
 function diagnostics(sim)
     σ, u, p = sim.flow.σ, sim.flow.u, sim.flow.p   # σ is scratch between time steps
@@ -123,8 +196,30 @@ function diagnostics(sim)
     (t = WaterLily.time(sim.flow), dt = sim.flow.Δt[end], KE, enstrophy,
      umax = gmax(view(u, R.indices..., :)), pmax = gmax(view(p, R.indices...)), iters = Int(sim.pois.n[end]))
 end
+# A record as plain numbers: the values, ν, then the derivatives of the reduced diagnostics for each seeded parameter
+function record(step)
+    d = diagnostics(sim)
+    ders = [Symbol(:d, k, :_d, p) => FD.partials(d[k], i) for k in (:KE, :enstrophy, :umax, :pmax) for (i, p) in enumerate(params)]
+    (; step, map(FD.value, d)..., nu = Float64(FD.value(sim.flow.ν)), ders...)
+end
 rows = NamedTuple[]
-record!(step) = (check > 0 && step % check == 0) && push!(rows, (; step, diagnostics(sim)...))
+record!(step) = (check > 0 && step % check == 0) && push!(rows, record(step))
+
+# ── Memory of this rank ────────────────────────────────────────────────────────────────────────────────
+# The arrays of the simulation, each once (the top Poisson level's L is the flow's μ₀)
+arrays(x::AbstractArray{<:Number}) = Any[x]
+arrays(x::Union{Tuple,AbstractArray}) = isempty(x) ? Any[] : mapreduce(arrays, vcat, x)
+arrays(x::Union{Simulation,WaterLily.AbstractFlow,WaterLily.AbstractPoisson}) = unique(objectid,
+    mapreduce(f -> arrays(getfield(x, f)), vcat, fieldnames(typeof(x))))
+arrays(x) = Any[]
+# The index lists and buffers of WaterLily's halo plans (the staged buffers are host memory mapped into the device)
+function halo_bytes()
+    X = use_mpi ? Base.get_extension(WaterLily, :WaterLilyMPIExt) : nothing
+    (isnothing(X) || !isdefined(X, :_halos)) && return 0
+    sum(h -> hasproperty(h, :S) ? sizeof(h.S) + sizeof(h.R) + sizeof(h.s) + sizeof(h.r) : 0, values(X._halos); init=0)
+end
+# The memory in use on this rank's GPU: all of it, the CUDA context and other processes included
+device_bytes() = bname == "CuArray" ? (GC.gc(); CUDA.reclaim(); CUDA.total_memory() - CUDA.free_memory()) : 0
 
 # ── Header ─────────────────────────────────────────────────────────────────────────────────────────────
 # The commit of a clone, through Julia's libgit2, which needs no git command on the compute nodes (JUPITER's have one
@@ -141,7 +236,7 @@ devices = bname == "CuArray" ? "$(CUDA.name(CUDA.device())) [uuid $(string(CUDA.
 devices = use_mpi ? MPI.gather(devices, comm) : [devices]
 if me == 0
     println("WaterLily $(pkgversion(WaterLily)) ($(commit(pkgdir(WaterLily)))), WaterLily-Benchmarks $(first(commit(dirname(@__DIR__)), 7)), " *
-            "Julia $VERSION, backend $(WaterLily.backend), $bname, $T")
+            "Julia $VERSION, backend $(WaterLily.backend), $bname, $V, partials=$Npart")
     if use_mpi
         println("MPI: $(first(split(MPI.Get_library_version(), '\n'))), has_cuda=$(MPI.has_cuda()), halo=$halo, " *
                 (igg ? "IGG_CUDAAWARE_MPI=$(get(ENV, "IGG_CUDAAWARE_MPI", "unset"))" :
@@ -159,6 +254,7 @@ for s in 1:Nwarmup; sim_step!(sim; remeasure=false); record!(s); end
 GC.gc(); barrier()
 const halo_timers = igg && get(ENV, "IGG_TRACE", "0") != "0" && isdefined(ImplicitGlobalGrid, :halo_trace)
 halo_timers && ImplicitGlobalGrid.halo_trace_reset!()
+empty!(lap_log)
 timed_steps() = (for s in Nwarmup+1:Nwarmup+Nsteps; sim_step!(sim; remeasure=false); record!(s); end; barrier())
 prof = nothing  # the CUDA.@profile summary (nothing under an external profiler)
 cpuprofile && (using Profile; Profile.init(n=10^7, delay=0.0005))
@@ -178,7 +274,11 @@ if me == 0
     prefix = use_mpi ? "MPI np=$nranks" : "SERIAL"
     @info "$prefix  case=$case$(weak ? "  mode=weak" : "")  grid=$(join(gdims, "x"))  local=$(join(local_dims, "x"))  " *
           "$Nsteps steps  per_step=$(round(ms, digits=2))ms  levels=$(length(sim.pois.levels))  " *
-          "mean_iters=$(round(sum(iters)/length(iters), digits=1))  cost=$(@sprintf("%.3f", ms*1e6/prod(gdims)))ns/DOF/dt  backend=$bname"
+          "mean_iters=$(round(sum(iters)/length(iters), digits=1))  cost=$(@sprintf("%.3f", ms*1e6/prod(gdims)))ns/DOF/dt  backend=$bname  " *
+          "T=$V  partials=$Npart"
+    cells = prod(local_dims); mb(b) = @sprintf("%.1f", b/2^20); per(b) = @sprintf("%.2f", b/cells)
+    @info "MEMORY  cells=$cells  arrays=$(per(sum(sizeof, arrays(sim))))B/cell  halos=$(per(halo_bytes()))B/cell  " *
+          "device=$(mb(device_bytes()))MB  host_rss=$(mb(Sys.maxrss()))MB"
     isnothing(prof) || show(IOContext(stdout, :displaysize => (10_000, 200)), MIME("text/plain"), prof)
     # main thread: frames of the packages, MPI/UCX and the GC by total samples, then all frames by self samples
     pkgs = r"WaterLily|ImplicitGlobalGrid|@MPI|@CUDA|@GPUArrays|@KernelAbstractions|gc\.c|libmpi|libpscom|libuc[pst]|libcuda"
@@ -207,4 +307,5 @@ if me == 0
     end
 end
 halo_timers && ImplicitGlobalGrid.halo_trace(per=Nsteps, unit="step")
+laps && print_laps()
 igg_grid && finalize_global_grid()

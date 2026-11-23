@@ -1,0 +1,93 @@
+#!/bin/bash
+#SBATCH --job-name=wl-ad
+#SBATCH --partition=booster
+#SBATCH --ntasks-per-node=4
+#SBATCH --cpus-per-task=72
+#SBATCH --gpus-per-task=1
+#SBATCH --gres=gpu:4  # with --gpus-per-task, or Slurm rejects the GRES it adds by default
+#SBATCH --time=00:45:00
+#SBATCH --output=wl-ad-%j.out
+
+# Forward-mode AD (ForwardDiff.Dual, mpi/scaling.jl --partials) against Float32 on JUPITER GPUs, TGV, one rank per
+# GPU. At every point the runs follow one another in this allocation: Float32, Dual, Float32 again (the two Float32
+# runs give the scatter of the ratio), then both with the halo timers (--laps). Submit from the repository root:
+#
+#   sbatch -A <budget> -N <nodes> mpi/jobs/jupiter_ad.sh ["MODE LOG2P NP [NP ...]" ...]
+#
+# Each argument is a set of points: MODE strong (LOG2P sets the global size) or weak (the size per GPU), and the
+# numbers of GPUs (1 runs without MPI). Without arguments, the points of the node count:
+#   1 node    "weak 7 1" "weak 8 1 4"                  one GPU at 128^3 and 256^3, 4 GPUs at 256^3 each
+#   N nodes   "weak 8 4N" "strong 9 4N"                256^3 per GPU, and 512^3 on all the GPUs
+# Variables (defaults in brackets):
+#   AD_PARTIALS       [1]              the partials of the Dual runs; the first is the one timed with --laps
+#   AD_LAPS           [1]              0: no runs with halo timers
+#   AD_MORE_PARTIALS  [4, none beyond 2 nodes]  more partials, timed once each at the weak points
+#   AD_DEVICE         [1, 0 beyond 2 nodes]     also time every eltype with the halos passed device to device
+#                                      (WATERLILY_GPU_AWARE_MPI=1; the others are staged through host memory)
+#   STEPS [100], WARMUP [20], WATERLILY_ENV [mpi]
+# The runs with more partials and device to device come last, so that a time limit cuts them first. Every run writes
+# its output to data/mpi/jupiter_ad_<job>/<point>_<run>.txt; the job prints their table and writes runs.csv there
+# (mpi/collect.jl, which also merges several jobs: julia mpi/collect.jl --out=ad.csv data/mpi/jupiter_ad_*).
+# One and two nodes fit in the develbooster reservation (--reservation=develbooster).
+
+cd "$SLURM_SUBMIT_DIR"
+ulimit -c 0  # no core dumps: one crashed rank can write tens of GB
+source mpi/jobs/jupiter_env.sh  # before set -u: module functions may read unset variables
+set -uo pipefail
+N="$SLURM_JOB_NUM_NODES"; NP=$((4*N))
+if [ $# -gt 0 ]; then POINTS=("$@")
+elif [ "$N" -eq 1 ]; then POINTS=("weak 7 1" "weak 8 1 4")
+else POINTS=("weak 8 $NP" "strong 9 $NP"); fi
+few=$([ "$N" -le 2 ] && echo 1 || echo 0)
+PARTIALS="${AD_PARTIALS:-1}"; LAPS="${AD_LAPS:-1}"; DEVICE="${AD_DEVICE:-$few}"
+MORE="${AD_MORE_PARTIALS-$([ "$few" -eq 1 ] && echo 4)}"
+STEPS="${STEPS:-100}"; WARMUP="${WARMUP:-20}"; ENV_DIR="${WATERLILY_ENV:-mpi}"
+DIR="data/mpi/jupiter_ad_${SLURM_JOB_ID}"; mkdir -p "$DIR"
+echo "points: $(printf '"%s" ' "${POINTS[@]}"), partials: $PARTIALS, laps: $LAPS, more partials: ${MORE:-none}, device to device: $DEVICE"
+echo "$STEPS steps after $WARMUP, environment $ENV_DIR -> $DIR"
+# precompile on one rank, so that the runs do not all compile at once
+srun -N 1 -n 1 julia --project="$ENV_DIR" -e 'using Pkg; Pkg.precompile(); using CUDA, MPI, WaterLily
+    isdefined(WaterLily, :HaloBackend) || error("WaterLily in this environment has no halo exchange of its own (mpi-igg since 57443f8)")' || exit 1
+srun -N 1 -n 4 bash -c 'echo "  rank $SLURM_PROCID: cores$(taskset -cp $$ | cut -d: -f2)"' | sort -k2n
+
+run () { # NAME NP PARTIALS GPU_AWARE [scaling.jl options]: one run, its whole output in $DIR/NAME.txt
+    local name=$1 np=$2 partials=$3 aware=$4; shift 4
+    local nodes=$(( (np + 3) / 4 )) serial=""; [ "$np" -eq 1 ] && serial="--serial"
+    if [ "$nodes" -gt "$N" ]; then echo "[ SKIPPED $name: needs $nodes nodes ]"; return; fi
+    { echo "# run=$name job=$SLURM_JOB_ID nodes=$nodes"
+      WATERLILY_GPU_AWARE_MPI="$aware" srun -N "$nodes" -n "$np" julia --project="$ENV_DIR" -t 4 mpi/scaling.jl --case=tgv \
+          --backend=CuArray --steps="$STEPS" --warmup="$WARMUP" --partials="$partials" $serial "$@"; } > "$DIR/$name.txt" 2>&1
+    printf "%-30s %s\n" "$name" "$(grep -h "Info: \(SERIAL\|MPI np\)" "$DIR/$name.txt" | sed 's/.*Info: //; s/  case.*per_step=/ /; s/ levels=[0-9]*//; s/cost.*partials/partials/' || true)"
+    grep -q "per_step=" "$DIR/$name.txt" || { echo "[ FAILED: $name ]"; grep -hE "ERROR|[Ee]rror|srun:|signal|[Kk]illed" "$DIR/$name.txt" | head -5; }
+}
+each () { # runs FUNCTION MODE LOG2P NP for every point
+    local f=$1 point mode p np
+    for point in "${POINTS[@]}"; do
+        read -r mode p nps <<< "$point"
+        for np in $nps; do "$f" "$mode" "$p" "$np"; done
+    done
+}
+opts () { [ "$1" = weak ] && echo "--weak --log2p=$2" || echo "--log2p=$2"; }
+
+timed () { # Float32, Dual, Float32 again, then the halo timers
+    local id="$1$2_np$3" n
+    run "${id}_f32_a" "$3" 0 0 $(opts "$1" "$2")
+    for n in $PARTIALS; do run "${id}_dual${n}" "$3" "$n" 0 $(opts "$1" "$2"); done
+    run "${id}_f32_b" "$3" 0 0 $(opts "$1" "$2")
+    if [ "$LAPS" = 1 ] && [ "$3" -gt 1 ]; then
+        run "${id}_f32_laps" "$3" 0 0 $(opts "$1" "$2") --laps
+        run "${id}_dual${PARTIALS%% *}_laps" "$3" "${PARTIALS%% *}" 0 $(opts "$1" "$2") --laps
+    fi
+}
+more () { # more partials at the weak points, and every eltype device to device
+    local id="$1$2_np$3" n
+    if [ "$1" = weak ]; then for n in $MORE; do run "${id}_dual${n}" "$3" "$n" 0 $(opts "$1" "$2"); done; fi
+    if [ "$DEVICE" = 1 ] && [ "$3" -gt 1 ]; then
+        run "${id}_f32_device" "$3" 0 1 $(opts "$1" "$2")
+        for n in $PARTIALS $([ "$1" = weak ] && echo "$MORE"); do run "${id}_dual${n}_device" "$3" "$n" 1 $(opts "$1" "$2"); done
+    fi
+}
+each timed
+each more
+
+echo; julia mpi/collect.jl --table --out="$DIR/runs.csv" "$DIR"
