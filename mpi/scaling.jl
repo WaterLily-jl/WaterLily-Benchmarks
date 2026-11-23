@@ -15,8 +15,9 @@
 #   --weak                    weak scaling: the size is per rank and the global grid grows with the number of ranks
 #   --backend=Array|CuArray [Array]
 #   --T=Float32|Float64 [Float32]
-#   --partials=N        [0]   ForwardDiff.Dual numbers of N partials on top of --T (tgv only): partial 1 is d/dν,
-#                             partial 2 d/dU (the amplitude of the initial velocity), the others repeat d/dν
+#   --partials=N        [0]   ForwardDiff.Dual numbers of N partials on top of --T (tgv only), N independent inputs:
+#                             partial 1 is d/dν, partial 2 d/dU (the amplitude of the initial velocity), partial
+#                             j > 2 the amplitude, zero, of the same vortex at j-1 times its wavenumber
 #   --Re=x              [1600 tgv, 3700 sphere]  Reynolds number (ν(1±ε) for finite differences: Re/(1±ε))
 #   --tol=x --itmx=n          tolerance and largest number of iterations of the pressure solver (WaterLily's by
 #                             default: 2e-3, 32). A finite difference needs a converged solve (--tol=1e-9 in Float64):
@@ -168,12 +169,17 @@ function tgv(dims, gdims; Re=1600)
     # strong: one period over the global box (tgv_periodic); weak: one period per rank block, so the flow and
     # the work of every rank stay the same as the number of ranks grows
     L = weak ? dims[1] : gdims[1]
-    κ = V(2π/L); U = seeded(1, ==(2)); ν = seeded(1/(κ*Re), !=(2))
+    κ = V(2π/L); U = seeded(1, ==(2)); ν = seeded(1/(κ*Re), ==(1))
+    A = ntuple(j -> seeded(0, ==(j + 2)), max(Npart - 2, 0))  # the amplitudes of the vortices of wavenumbers 2κ, 3κ, ...
     function u0(i, xyz)
         x, y, z = @. xyz*κ
-        i == 1 && return -U*sin(x)*cos(y)*cos(z)
-        i == 2 && return  U*cos(x)*sin(y)*cos(z)
-        return 0*U
+        i == 3 && return 0*U
+        u = i == 1 ? -U*sin(x)*cos(y)*cos(z) : U*cos(x)*sin(y)*cos(z)
+        for j in eachindex(A)
+            m = j + 1; a = @inbounds A[j]
+            u += i == 1 ? -a*sin(m*x)*cos(m*y)*cos(m*z) : a*cos(m*x)*sin(m*y)*cos(m*z)
+        end
+        return u
     end
     Simulation(dims, (0, 0, 0), 1/κ; U, u0, ν, T, mem, perdir=(1, 2, 3))
 end
