@@ -3,7 +3,7 @@
 [`benchmark.sh`](https://github.com/WaterLily-jl/WaterLily-Benchmarks/blob/main/benchmark.sh) runs every combination of Julia versions, WaterLily refs, backends and thread counts it is given. Each combination runs in a new Julia process that times all the requested cases and sizes and writes one JSON file per case. Nothing is shared between the processes but the files.
 
 ```sh
-./benchmark.sh -v "release 1.11" -w "master my-branch" -b "Array CuArray" -t "1 4" \
+./benchmark.sh -v "release 1.11" -w "main my-branch" -b "Array CuArray" -t "1 4" \
                -c "tgv jelly-biotsavart" -p "6,7 5,6" -s 25 -ft Float32
 ```
 

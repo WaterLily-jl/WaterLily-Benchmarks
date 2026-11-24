@@ -19,7 +19,7 @@ Adapt the account, partition and `WATERLILY_DIR` to yours. A few things to keep 
 The raw data of studies reported in issues, pull requests or papers are kept in [WaterLily-Benchmarks-data](https://github.com/WaterLily-jl/WaterLily-Benchmarks-data): one folder per study, with the JSON files as `benchmark.sh` wrote them, the resolved `Manifest.toml` files, and a README with the hardware, the software versions and the exact commands. `compare.jl` reads a study's `data/` folder directly:
 
 ```sh
-WATERLILY_DIR=<WaterLily.jl clone> julia --project compare.jl --data_dir=<study>/data --speedup_base="CPUx01,master"
+WATERLILY_DIR=<WaterLily.jl clone> julia --project compare.jl --data_dir=<study>/data --speedup_base="CPUx01,main"
 ```
 
 Use the WaterLily-Benchmarks commit given in the study's README to get the same tables. The data directories that `benchmark.sh` writes already hold the Manifests of their runs and `environments.toml` (see [Output](@ref)), so a study can keep them as they are.
