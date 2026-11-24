@@ -18,6 +18,8 @@
 #   --partials=N        [0]   ForwardDiff.Dual numbers of N partials on top of --T (tgv only), N independent inputs:
 #                             partial 1 is d/dν, partial 2 d/dU (the amplitude of the initial velocity), partial
 #                             j > 2 the amplitude, zero, of the same vortex at j-1 times its wavenumber
+#   --fastdual                @inline fast-math methods for Dual numbers (mpi/fastdual.jl): without them every Dual
+#                             product in a kernel is a function call from 6 partials on (docs: "The cost of a partial")
 #   --Re=x              [1600 tgv, 3700 sphere]  Reynolds number (ν(1±ε) for finite differences: Re/(1±ε))
 #   --tol=x --itmx=n          tolerance and largest number of iterations of the pressure solver (WaterLily's by
 #                             default: 2e-3, 32). A finite difference needs a converged solve (--tol=1e-9 in Float64):
@@ -93,6 +95,7 @@ const FD = WaterLily.ForwardDiff
 struct Seed end  # their tag
 const T = Npart == 0 ? V : FD.Dual{typeof(FD.Tag(Seed(), V)),V,Npart}
 const params = ("nu", "U")[1:min(Npart, 2)]  # the parameters of partials 1 and 2
+flag("fastdual") && include(joinpath(@__DIR__, "fastdual.jl"))
 seeded(x, on) = Npart == 0 ? V(x) : T(V(x), FD.Partials(ntuple(k -> V(on(k)), Npart)))  # x with partial k = on(k)
 perdir = case == "tgv" ? (1, 2, 3) : ()
 if use_mpi
@@ -248,6 +251,7 @@ if me == 0
     println("WaterLily $(pkgversion(WaterLily)) ($(commit(pkgdir(WaterLily)))), WaterLily-Benchmarks $(first(commit(dirname(@__DIR__)), 7)), " *
             "Julia $VERSION, backend $(WaterLily.backend), $bname, $V, partials=$Npart")
     isempty(poisson_kwargs) || println("pressure solver: $poisson_kwargs")
+    flag("fastdual") && println("fast-math methods for Dual: mpi/fastdual.jl")
     if use_mpi
         println("MPI: $(first(split(MPI.Get_library_version(), '\n'))), has_cuda=$(MPI.has_cuda()), halo=$halo, " *
                 (igg ? "IGG_CUDAAWARE_MPI=$(get(ENV, "IGG_CUDAAWARE_MPI", "unset"))" :
