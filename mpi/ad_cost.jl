@@ -191,8 +191,12 @@ function probe(N)
         flush(stdout)
         name == "step" || for (k, s) in sims; s.flow.u .= state[k][1]; s.flow.p .= state[k][2]; end; S()
     end
-    others = gpu ? filter(l -> !isempty(l) && !startswith(l, "$(getpid()),") && occursin("julia", l),
-                          readlines(`nvidia-smi --query-compute-apps=pid,name --format=csv,noheader`)) : String[]
+    others = try  # other Julia processes computing on this GPU
+        gpu ? filter(l -> !isempty(l) && !startswith(l, "$(getpid()),") && occursin("julia", l),
+                     readlines(`nvidia-smi --query-compute-apps=pid,name --format=csv,noheader`)) : String[]
+    catch
+        String[]
+    end
     @printf("INFO %2d sizeof=%d cells=%d others=%d device_MB=%.0f\n", N, sizeof(dual(N, Seed())), n^3, length(others),
             gpu ? (CUDA.total_memory() - CUDA.free_memory())/2^20 : 0)
     empty!(sims); empty!(state); ps = nothing; GC.gc(); gpu && CUDA.reclaim()
