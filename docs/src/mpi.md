@@ -136,15 +136,16 @@ sbatch -N 16 --time=00:45:00 mpi/jobs/jupiter_ad.sh                    # 64 GPUs
 julia mpi/collect.jl --table --out=data/mpi/jupiter_ad.csv data/mpi/jupiter_ad_*   # one row per run of all the jobs
 ```
 
-The same curves with the `Dual` arithmetic inlined (`--fastdual`, see "The cost of a partial") come from `AD_ARGS`, here without the halo timers, the tolerance pair and the device-to-device runs, with 4 and 8 partials at every weak point, and with 8 partials once more as it is (`AD_PLAIN`, runs named `*_plain`) for the gain in the same allocation. The column `fastdual` of `mpi/collect.jl` tells these runs from the others:
+The same curves with the `Dual` arithmetic inlined (`--fastdual`, see "The cost of a partial") come from `AD_ARGS`, here without the halo timers, the tolerance pair and the device-to-device runs, with 4 and 8 partials at every weak point, and with 2 and 8 partials once more as they are (`AD_PLAIN`, runs named `*_plain`) at the weak points. The gain is read within a job, from the `*_plain` runs or from `ms_ratio` (against the `Float32` runs of the same job): the milliseconds of two allocations differ by more than the gain at 1 to 3 partials. The column `fastdual` of `mpi/collect.jl` tells these runs from the others:
 
 ```sh
-export AD_ARGS=--fastdual AD_LAPS=0 AD_TOL= AD_DEVICE=0 AD_MORE_PARTIALS="4 8" AD_PLAIN=8
-sbatch --reservation=develbooster -N 1 --time=01:00:00 mpi/jobs/jupiter_ad.sh   # 1 and 4 GPUs, 34 runs
-sbatch --reservation=develbooster -N 2 --time=00:30:00 mpi/jobs/jupiter_ad.sh   # 8 GPUs, 13 runs
-sbatch --reservation=develbooster -N 4 --time=00:30:00 mpi/jobs/jupiter_ad.sh   # 16 GPUs, 13 runs
-sbatch -N 8 --time=00:30:00 mpi/jobs/jupiter_ad.sh                     # 32 GPUs, 13 runs
-sbatch -N 16 --time=00:30:00 mpi/jobs/jupiter_ad.sh                    # 64 GPUs, 13 runs
+export AD_ARGS=--fastdual AD_LAPS=0 AD_TOL= AD_DEVICE=0 AD_MORE_PARTIALS="4 8" AD_PLAIN="2 8"
+sbatch --reservation=develbooster -N 1 --time=01:00:00 mpi/jobs/jupiter_ad.sh   # 1 and 4 GPUs, 37 runs
+sbatch --reservation=develbooster -N 2 --time=00:30:00 mpi/jobs/jupiter_ad.sh   # 8 GPUs, 14 runs
+sbatch --reservation=develbooster -N 4 --time=00:30:00 mpi/jobs/jupiter_ad.sh   # 16 GPUs, 14 runs
+sbatch -N 8 --time=00:30:00 mpi/jobs/jupiter_ad.sh                     # 32 GPUs, 14 runs
+sbatch -N 16 --time=00:30:00 mpi/jobs/jupiter_ad.sh                    # 64 GPUs, 14 runs
+unset AD_ARGS AD_LAPS AD_TOL AD_DEVICE AD_MORE_PARTIALS AD_PLAIN       # or later jobs of this shell inherit them
 ```
 
 The lines name no account: add `-A <budget>` where Slurm has no default one (the submit filter then asks for it). The times are those of the jobs of 2026-11-23 (0.9 to 1.4 min per run); each run has a limit of its own (`RUN_MINUTES`, default 10, passed to `srun --time`), so that one that hangs does not take the rest of the job with it, and the jobs ask for 1 h 30 (`jupiter_ad.sh`) and 40 min (`jupiter_ad_check.sh`) unless `--time` says otherwise. The blocks fit: `Float32` takes 128.3 B per cell at `256^3`, so `512^3` on one GPU needs 17 GB and 69 GB with 3 partials, of the 97.9 GB of a GH200, and `256^3` with 8 partials 19 GB. Every run writes its whole output to `data/mpi/jupiter_ad_<job>/<point>_<run>.txt`, and the job prints the table of its runs and writes `runs.csv` there. `mpi/collect.jl` reads everything from what the runs printed, not from file names: the commits, the eltype and its partials, the ranks, the mode and the sizes, the time per step, the mean Poisson iterations, the pressure tolerance when set, the transport (`gpu_aware`), the halo phases of a run with `--laps` and the memory. It adds, per run with partials, `ms_ratio` and `mem_ratio` against the mean of the `Float32` runs of the same job and point (`iters_differ` flags a pair whose Poisson iterations differ: the ratio then holds another amount of work) `cost_per_partial`, which is `(t(N)/t(0) - 1)/N`, and `cost_fit`, the `c` of `t(N)/t(0) = 1 + c N` fitted to the runs of that point with up to 3 partials (`c = 1` is the cost of `N` more solves); and, per timed run, `efficiency`, the parallel efficiency against the runs on the fewest ranks (`eff_ref_np`) of its curve among the files given (same mode, size, eltype, partials, tolerance and transport, across jobs, so it holds the scatter between allocations that the ratios do not). It also reads the job outputs of `mpi/jobs/submit.sh`, several runs per file, so the `Float32` curves of earlier jobs can go in the same table. The check job writes to `data/mpi/jupiter_adcheck_<job>/`, with its tables in `summary.txt`; its runs have no warm-up, so they are no timings.
