@@ -114,9 +114,12 @@ update_environment () {
     fi
     echo "Updating environment $project to Julia $version and compiling WaterLily"
     local up=""; $UPDATE && up="Pkg.update();"
-    # With -bs, [sources] already points at $BIOTSAVART_DIR, so Pkg.update resolves the local clone.
+    # With -bs, BiotSavartBCs is developed from $BIOTSAVART_DIR too: a Manifest that followed it from GitHub keeps the
+    # dependencies of that tree (Pkg.update finds no changes), so a branch that adds a dependency would not load.
+    local dev="PackageSpec(path=get(ENV, \"WATERLILY_DIR\", \"\"))"
+    [ ${#BS_VERSIONS[@]} -eq 0 ] || dev="[$dev, PackageSpec(path=get(ENV, \"BIOTSAVART_DIR\", \"\"))]"
     # Pkg is loaded before activating: with --project, a Manifest from Julia <= 1.12 breaks `using Pkg` on 1.13.
-    full_args=(-e "using Pkg; Pkg.activate(\"$project\"); Pkg.develop(PackageSpec(path=get(ENV, \"WATERLILY_DIR\", \"\"))); $add $up")
+    full_args=(-e "using Pkg; Pkg.activate(\"$project\"); Pkg.develop($dev); $add $up")
     julia_cmd || { echo "ERROR: updating the environment for WaterLily $wl_version on Julia $version failed." >&2; exit 1; }
     [ -z "$add" ] || cp "$THIS_DIR/Project.toml" "$project/Project.base.toml"  # the Project.toml it was made from
 }
