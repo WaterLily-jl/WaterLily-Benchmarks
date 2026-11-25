@@ -133,7 +133,7 @@ sbatch --reservation=develbooster -N 2 --time=00:50:00 mpi/jobs/jupiter_ad.sh   
 sbatch --reservation=develbooster -N 4 --time=00:45:00 mpi/jobs/jupiter_ad.sh   # 16 GPUs, 16 runs, 22 min
 sbatch -N 8 --time=00:45:00 mpi/jobs/jupiter_ad.sh                     # 32 GPUs, 16 runs, 22 min
 sbatch -N 16 --time=00:45:00 mpi/jobs/jupiter_ad.sh                    # 64 GPUs, 16 runs, 22 min
-julia mpi/collect.jl --table --out=data/mpi/jupiter_ad.csv data/mpi/jupiter_ad_*   # one row per run of all the jobs
+julia mpi/collect.jl --table --out=data/mpi/jupiter_ad.csv data/mpi/jupiter_ad_30*   # one row per run of these jobs (2026-11-23)
 ```
 
 The same curves with the `Dual` arithmetic inlined (`--fastdual`, see "The cost of a partial") come from `AD_ARGS`, here without the halo timers, the tolerance pair and the device-to-device runs, with 4 and 8 partials at every weak point, and with 2 and 8 partials once more as they are (`AD_PLAIN`, runs named `*_plain`) at the weak points. The gain is read within a job, from the `*_plain` runs or from `ms_ratio` (against the `Float32` runs of the same job): the milliseconds of two allocations differ by more than the gain at 1 to 3 partials. The column `fastdual` of `mpi/collect.jl` tells these runs from the others:
