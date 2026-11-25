@@ -1,6 +1,6 @@
 # Comparing results
 
-[`compare.jl`](https://github.com/WaterLily-jl/WaterLily-Benchmarks/blob/main/compare.jl) reads the JSON files of `benchmark.sh` and prints one table per case and size, with one row per backend, WaterLily ref, Julia version and float type, where the float type of an AD run (`benchmark.sh -ft Float32+ad4`) includes its partials. [Methodology](methodology.md) explains how the columns are measured.
+[`compare.jl`](https://github.com/WaterLily-jl/WaterLily-Benchmarks/blob/main/compare.jl) reads the JSON files of `benchmark.sh` and prints one table per case and size, with one row per backend, WaterLily ref, Julia version and float type. [Methodology](methodology.md) explains how the columns are measured.
 
 ```sh
 julia --project compare.jl --data_dir=data/benchmark --patterns="tgv jelly-biotsavart" --speedup_base=CPUx01 --sort=Backend
@@ -35,36 +35,11 @@ In the text tables the speedup baseline row is blue and the fastest row of each 
 - `Speedup` of every row is the baseline time divided by the row time, so it also compares backends.
 - `Δ ± σ` of a row compares it with its *reference row*: the row of the same backend with the WaterLily ref, Julia version and float type of the baseline. With `--speedup_base=main`, each backend is compared with its own `main` row.
 
+WaterLily refs are named from the clone in `$WATERLILY_DIR`: a local branch at that commit, else a tag, else a remote branch, else the hash. Point it to an up-to-date clone when reading results from another machine.
+
 ## AD runs
 
-The AD runs of `benchmark.sh` (`-ft <ftype>+ad<N>`) are rows of the same table, listed after the plain rows of their backend with `FP = <ftype>+ad<N>`:
-
-- The plain rows come first, so the default baseline and `--speedup_base=main` are plain rows. `Speedup` of an AD row is then below 1, and its inverse is the cost of the partials: `0.25` means that a step with those partials takes 4 plain steps.
-- The reference row of an AD row has the same number of partials: `Δ ± σ` compares the WaterLily refs at equal partials, e.g. `my-branch` with 4 partials against `main` with 4 partials. A row whose number of partials was not run for the baseline's ref prints `-`.
-- The fastest row is marked for each backend and number of partials.
-- The plots only show the rows with the partials of the baseline.
-- A baseline can also be an AD row, e.g. `--speedup_base="main,Float32+ad4"`: `Speedup` is then relative to that row, and each `Δ ± σ` still compares equal partials.
-
-`tgv` at `log2p = 7` on a laptop GPU, `main` against a branch that changes how the `Dual` kernels are compiled ([WaterLily.jl#408](https://github.com/WaterLily-jl/WaterLily.jl/pull/408)), from a sweep with `-b CuArray -c "tgv tgv tgv" -ft "Float32 Float32+ad4 Float32+ad8" -r 3` and `compare.jl --speedup_base=main`:
-
-```
-▶ log2p = 7
-┌────────────┬────────────────────┬────────┬─────────────┬───────┬────────┬────────┬─────────────┬─────────┬───────┬──────────────┬─────────┬──────┐
-│  Backend   │     WaterLily      │ Julia  │     FP      │ Alloc │  Mean  │ Median │    Cost     │ Speedup │ Noise │    Δ ± σ     │ Signif  │ Reps │
-│            │                    │        │             │  [k]  │  [ms]  │  [ms]  │ [ns/DOF/dt] │         │  [%]  │     [%]      │ [|Δ|/σ] │      │
-├────────────┼────────────────────┼────────┼─────────────┼───────┼────────┼────────┼─────────────┼─────────┼───────┼──────────────┼─────────┼──────┤
-│ GPU-NVIDIA │ dual-always-inline │ 1.13.2 │     Float32 │   5.7 │  18.93 │  19.04 │        9.03 │    0.99 │  13.2 │  +1.2 ± 18.6 │    0.1  │    2 │
-│ GPU-NVIDIA │               main │ 1.13.2 │     Float32 │   5.7 │  18.71 │  18.94 │        8.92 │    1.00 │  13.0 │            - │       - │    2 │
-│ GPU-NVIDIA │ dual-always-inline │ 1.13.2 │ Float32+ad4 │  10.7 │  95.20 │  94.75 │       45.39 │    0.20 │   3.8 │  -7.4 ±  6.6 │    1.1  │    2 │
-│ GPU-NVIDIA │               main │ 1.13.2 │ Float32+ad4 │   7.2 │ 102.76 │ 101.42 │       49.00 │    0.18 │   5.4 │            - │       - │    2 │
-│ GPU-NVIDIA │ dual-always-inline │ 1.13.2 │ Float32+ad8 │  11.2 │ 193.09 │ 192.90 │       92.07 │    0.10 │   1.9 │ -33.5 ±  1.9 │   17.7  │    2 │
-│ GPU-NVIDIA │               main │ 1.13.2 │ Float32+ad8 │   7.5 │ 290.29 │ 290.98 │      138.42 │    0.06 │   0.2 │            - │       - │    2 │
-└────────────┴────────────────────┴────────┴─────────────┴───────┴────────┴────────┴─────────────┴─────────┴───────┴──────────────┴─────────┴──────┘
-```
-
-A step with 8 partials takes 15.5 plain steps on `main` (`Speedup` 0.06) and a third less on the branch, which changes nothing without partials. The table is of the second and third repetitions: in the first one the machine was still warming up, see [Forward-mode AD](@ref).
-
-WaterLily refs are named from the clone in `$WATERLILY_DIR`: a local branch at that commit, else a tag, else a remote branch, else the hash. Point it to an up-to-date clone when reading results from another machine.
+The [AD runs](@ref "Forward-mode AD") of `benchmark.sh` are rows of the same table, after the plain rows of their backend, with `FP = <ftype>+ad<N>`. `Speedup` stays relative to the baseline, a plain row by default, so its inverse is the cost of the partials. `Δ ± σ` compares an AD row with the baseline's ref at the same number of partials.
 
 ## Plots
 

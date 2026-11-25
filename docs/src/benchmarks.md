@@ -23,7 +23,7 @@ Lists are space-separated and quoted. When an option is given twice, the last va
 | `-c`, `--cases` | `"tgv jelly-biotsavart"` | cases, see [Cases and checkpoints](cases.md) |
 | `-p`, `--log2p` | per case | sizes of each case, comma-separated, e.g. `"6,7 5,6"` |
 | `-s`, `--max_steps` | `25` | time steps per run |
-| `-ft`, `--float_type` | `Float32` | `Float32` or `Float64`, or `<ftype>+ad<N>` for an AD run with `N` partials, e.g. `Float32+ad4`, see [Forward-mode AD](@ref) |
+| `-ft`, `--float_type` | `Float32` | `Float32` or `Float64`, or `<ftype>+ad<N>` for [Forward-mode AD](@ref) |
 | `-dev`, `--developed` | `checkpoints` | directory of the developed-flow checkpoints; `""` times the startup transient instead |
 | `-r`, `--repeats` | `1` | repetitions of the whole sweep, see [Repetitions](@ref) |
 | `-u`, `--update` | `false` | update the environment before each run, see [Updating the environment](@ref) |
@@ -50,22 +50,16 @@ Each run starts from a checkpoint of a developed flow, `checkpoints/<case>_<log2
 
 ## Forward-mode AD
 
-A float type `<ftype>+ad<N>`, e.g. `-ft Float32+ad4`, times its case with [ForwardDiff](https://github.com/JuliaDiff/ForwardDiff.jl) `Dual` numbers, as in a simulation differentiated in forward mode: the arrays hold `Dual`s over `<ftype>` with `N` partials. It measures what a derivative costs on each backend, and what a WaterLily change does to that cost. As any `-ft` value it is given once for all cases or once per case, so repeat a case to time it with several numbers of partials next to the plain run:
+A float type `<ftype>+ad<N>`, e.g. `-ft Float32+ad4`, times its case with [ForwardDiff](https://github.com/JuliaDiff/ForwardDiff.jl) `Dual` numbers over `<ftype>` with `N` partials, as in a simulation differentiated in forward mode. The same label is the float type of the run in the file names and in the `FP` column of [`compare.jl`](compare.md). As any `-ft` value it is given once for all cases or once per case, so repeat a case to time several numbers of partials:
 
 ```sh
 ./benchmark.sh -w "main my-branch" -b CuArray -c "tgv tgv tgv" -ft "Float32 Float32+ad4 Float32+ad8" -r 3
-julia --project compare.jl --speedup_base=main
 ```
 
-- The Reynolds number of the case is the differentiated input: it carries the first partial, and the other partials are zero. `Dual` arithmetic does the same work whether a partial is zero or not, so the time is that of `N` independent inputs.
-- The runs start from the same checkpoints as the plain ones, values only. After the warm-up `benchmark.jl` prints `max|∂u/∂Re|` and stops if it is zero, so a timed run always carries a derivative. In `sphere` and `donut` that derivative grows without bound with WaterLily's `quick` scheme, about 2.5 times per step, and overflows within 150 steps: the `10c-9u` bound of `quick` ([WaterLily.jl#358](https://github.com/WaterLily-jl/WaterLily.jl/issues/358)), which the Koren scheme of [WaterLily.jl#385](https://github.com/WaterLily-jl/WaterLily.jl/pull/385) replaces (the derivative of both cases then stays bounded). It does not happen in `tgv` and `cylinder`. The values and the pressure solver do not see the partials, and a step takes the same time whether they are finite or not, so the timings hold, but the derivative of those two cases is not a sensitivity.
-- The pressure solver stops on the residual of the values, so an AD run takes the solver iterations of the plain run (checked over 30 steps of `tgv`, `cylinder`, `sphere` and `donut`), and the time ratio is the cost of the `Dual` arithmetic.
-- The same `<ftype>+ad<N>` is the float type of the run in the file names and in the `FP` column of `compare.jl`, where the AD runs are rows of their own, see [Comparing results](compare.md). The files and tables of plain runs do not change.
-- The Biot-Savart cases cannot run: BiotSavartBCs.jl updates its residual with an atomic `+=`, which does not take `Dual` numbers, so an AD float type for a `-biotsavart` case stops with an error before anything runs. `jelly-biotsavart` is a default case: give the cases with `-c`, or keep it plain with `-ft "Float32+ad4 Float32"`.
-- AD runs are slow on the CPU, where the `Dual` loops are not vectorised: for `tgv` at `log2p = 6` the first partial alone costs 11 `Float32` steps on one thread and 8 on four, and each process warms up for at least 50 steps. Use small sizes and few steps there (`-p`, `-s`), or a GPU, where a partial costs about one `Float32` step (on a laptop GPU, 5 steps with 4 partials and 10 to 15 with 8). The memory is `N + 1` times that of the plain run.
-- A laptop that has been idle runs its first processes faster, and the first processes of a sweep are those of the first ref. With AD runs, which take minutes, this can be 10 to 20 % of a step: use `-r 3`, read `Signif`, and when the first repetition stands out compare the others, e.g. `julia --project compare.jl data/benchmark/*/*_r[23].json`.
-
-`Dual` comes from WaterLily's own ForwardDiff, so the environments need no extra package.
+- The Reynolds number carries the first partial and the other partials are zero, which costs the same as `N` independent inputs.
+- The runs start from the plain checkpoints. After the warm-up `benchmark.jl` prints `max|∂u/∂Re|` and stops if it is zero. In `sphere` and `donut` it overflows with the `quick` scheme ([WaterLily.jl#358](https://github.com/WaterLily-jl/WaterLily.jl/issues/358)), which does not change the time of a step.
+- The Biot-Savart cases do not run with `Dual` numbers: keep them plain (`-ft "Float32+ad4 Float32"`) or leave them out with `-c`.
+- On the CPU the `Dual` loops are not vectorised (the first partial costs about 11 `Float32` steps on one thread), so use small sizes and few steps there, or a GPU. The memory is `N + 1` times that of the plain run.
 
 ## Updating the environment
 
@@ -87,7 +81,7 @@ Each process writes one JSON file per case into `<data_dir>/<hostname>_<WaterLil
 <case>_<log2p>_<max_steps>_<ftype>_<backend>_<WaterLily hash>_<Julia version>[_r<n>].json
 ```
 
-where `<log2p>` joins the sizes, e.g. `tgv_67_25_Float32_CPUx04_50cb584_1.11.5.json` for `log2p = 6,7`. An AD run has `<ftype>+ad<N>` as its float type, e.g. `tgv_67_25_Float32+ad4_CPUx04_50cb584_1.11.5.json` (see [Forward-mode AD](@ref)). A run with `-bs` uses `<WaterLily hash>+bs<BiotSavartBCs hash>` instead of the WaterLily hash. The files hold `BenchmarkTools` results whose tags describe the run, and `compare.jl` reads the tags, not the file names, so renaming a file is safe for `compare.jl` (but see `environments.toml` below).
+where `<log2p>` joins the sizes, e.g. `tgv_67_25_Float32_CPUx04_50cb584_1.11.5.json` for `log2p = 6,7`. A run with `-bs` uses `<WaterLily hash>+bs<BiotSavartBCs hash>` instead of the WaterLily hash. The files hold `BenchmarkTools` results whose tags describe the run, and `compare.jl` reads the tags, not the file names, so renaming a file is safe for `compare.jl` (but see `environments.toml` below).
 
 Each data directory also keeps the environment of its runs, so that they can be reproduced:
 
