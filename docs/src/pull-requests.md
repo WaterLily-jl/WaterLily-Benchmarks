@@ -21,7 +21,7 @@ An AD float type gives [forward-mode AD runs](@ref "Forward-mode AD"), which nee
 |---|---|---|
 | `waterlily-dir` | the workspace | WaterLily.jl checkout containing `base` and `head` |
 | `base`, `head` | `main`, (required) | refs to compare, e.g. `head: pr-123` |
-| `args` | none | `benchmark.sh` arguments appended to the defaults `-b Array -t "1 2" -r 2`, a later value winning, e.g. `-c sphere -r 3`; restricted to `[A-Za-z0-9 ,._="-]`. With `-bs`, BiotSavartBCs.jl is checked out next to WaterLily, so its refs must exist on GitHub |
+| `args` | none | `benchmark.sh` arguments appended to the defaults `-b Array -t "1 2" -r 2`, a later value winning, e.g. `-c sphere -r 3`; restricted to `[A-Za-z0-9 ,._=+"-]`. With `-bs`, BiotSavartBCs.jl is checked out next to WaterLily, so its refs must exist on GitHub |
 | `force` | `true` | pass `-f` (skip the machine check), for shared runners |
 | `julia-version` | `1`, the latest release | for `julia-actions/setup-julia` |
 | `harness-ref`, `harness-path` | the action's ref, `WaterLily-Benchmarks` | revision of this repository to run, and its checkout path |
