@@ -15,9 +15,9 @@
 # repetitions of the whole sweep, the order of the two versions reversed on the second. The defaults are main at
 # 9d7c8ca and WaterLily-jl/WaterLily.jl#408 (bf/dual-always-inline) at 63f776b. Submit from the repository root:
 #
-#   sbatch jobs/jupiter_pr.sh
-#   WL_VERSIONS="<main commit> <PR commit>" DATA=data/jupiter_pr<n> sbatch jobs/jupiter_pr.sh   # another PR
-#   sbatch jobs/jupiter_pr.sh -c "tgv sphere cylinder"   # extra benchmark.sh arguments replace the defaults
+#   sbatch -A <budget> jobs/jupiter_pr.sh
+#   WL_VERSIONS="<main commit> <PR commit>" DATA=data/jupiter_pr<n> sbatch -A <budget> jobs/jupiter_pr.sh   # another PR
+#   sbatch -A <budget> jobs/jupiter_pr.sh -c "tgv sphere cylinder"   # extra benchmark.sh arguments replace the defaults
 #
 # Commits, not branch names: the result files carry the short hash of the checkout, and a hash cannot move.
 #
