@@ -1,9 +1,17 @@
 using WaterLily
 using BiotSavartBCs
 using StaticArrays
+using WaterLily.ForwardDiff: Dual, Partials, Tag, partials, value
+
+# Value type of a run: `ft`, or for `benchmark.sh -ad N` a Dual over `ft` with N partials (WaterLily's own ForwardDiff)
+struct ADInput end
+value_type(ft, N) = N == 0 ? ft : Dual{typeof(Tag(ADInput(), ft)),ft,N}
+# The differentiated input of a case: with a Dual `T`, `Re` carries partial 1 and the other partials stay zero
+seed(Re, T) = Re
+seed(Re, ::Type{D}) where {Tg,V,N,D<:Dual{Tg,V,N}} = D(V(Re), Partials(ntuple(k -> V(k == 1), N)))
 
 function tgv(p, backend; Re=1600, T=Float32, periodic=false) # symmetry planes, or periodic in every direction
-    L = 2^p; U = T(1); κ=T((periodic ? 2π : π)/L); ν = T(1/(κ*Re))
+    L = 2^p; U = T(1); κ=T((periodic ? 2π : π)/L); ν = T(1/(κ*seed(Re, T)))
     function u0(i,xyz)
         x,y,z = @. xyz*κ
         i==1 && return -U*sin(x)*cos(y)*cos(z)
@@ -15,7 +23,7 @@ end
 tgv_periodic(p, backend; kwargs...) = tgv(p, backend; periodic=true, kwargs...)
 
 function sphere(p, backend; Re=3700, U=1, T=Float32, biot=false)
-    D = 2^p; ν = U*D/Re
+    D = 2^p; ν = U*D/seed(Re, T)
     L = (16D, 6D, 6D)
     center = @SVector T[1.5D, 3D, 3D]; radius = T(D/2)
     body = AutoBody((x,t) -> √sum(abs2, x .- center) - radius)
@@ -25,7 +33,7 @@ end
 sphere_biotsavart(p, backend; kwargs...) = sphere(p, backend; biot=true, kwargs...)
 
 function cylinder(p, backend; Re=1e3, U=1, T=Float32, biot=false)
-    L = 2^p; R = T(L/2); ν = U*L/Re
+    L = 2^p; R = T(L/2); ν = U*L/seed(Re, T)
     center = @SVector T[1.5L, 3L, 0]
     function sdf(xyz, t)
         x, y, z = xyz - center
@@ -43,7 +51,7 @@ cylinder_biotsavart(p, backend; kwargs...) = cylinder(p, backend; biot=true, kwa
 function donut(p, backend; Re=1e3, U=1, T=Float32)
     L = 2^p
     center, R, r = SA[L/2, L/2, L/2], L/4, L/16
-    ν = U*R/Re
+    ν = U*R/seed(Re, T)
     norm2(x) = √sum(abs2,x)
     body = AutoBody() do xyz, t
         x, y, z = xyz - center
@@ -53,7 +61,7 @@ function donut(p, backend; Re=1e3, U=1, T=Float32)
 end
 
 function jelly_biotsavart(p, backend; Re=5e2, U=1, T=Float32)
-    n = 2^p; R = T(2n/3); h = 4n - 2R; ν = U*R/Re
+    n = 2^p; R = T(2n/3); h = 4n - 2R; ν = U*R/seed(Re, T)
     ω = 2U/R
     @fastmath @inline A(t) = 1 .- SA[1,1,0]*cos(ω*t)/10
     @fastmath @inline B(t) = SA[0,0,1]*((cos(ω*t) - 1)*R/4-h)

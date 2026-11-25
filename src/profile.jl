@@ -27,8 +27,10 @@ if metaparse(arg_value("run")) == 1 # run profiling
     max_steps = !isnothing(iarg("max_steps")) ? arg_value("max_steps") |> metaparse : 1000
     ftype = !isnothing(iarg("ftype")) ? arg_value("ftype") |> metaparse : Float32
     backend = arg_value("backend") |> x -> eval(Symbol(x))
+    npartials = partials_arg(ARGS)  # `--partials=<N>` (profile.sh -ad): ForwardDiff.Dual numbers of N partials
+    check_ad_cases([case], npartials)
 
-    sim = getf(case)(log2p, backend; T=ftype)
+    sim = getf(case)(log2p, backend; T=value_type(ftype, npartials))
     run_profiling(sim, max_steps; remeasure=remeasure_case(case))
 else # postprocess profiling
     nsys_fields = ["range", "style", "total_proj_time", "total_range_time", "instances", "proj_avg", "proj_median", "proj_min", "proj_max", "proj_std", "total_gpu_ops", "avg_gpu_ops", "avg_range_level", "avg_num_child"]

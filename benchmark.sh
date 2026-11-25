@@ -124,7 +124,17 @@ update_environment () {
 run_benchmark () {
     full_args=(--project=${project} --startup-file=no $args)
     echo "Running: julia ${full_args[@]}"
-    julia_cmd || { echo "ERROR: the benchmark failed (WaterLily $wl_version, Julia $version, $backend, -t ${thread:-auto}), stopping the sweep." >&2; exit 1; }
+    julia_cmd || { echo "ERROR: the benchmark failed (WaterLily $wl_version, Julia $version, $backend, -t ${thread:-auto}${args_ad:+, -ad $partials}), stopping the sweep." >&2; exit 1; }
+}
+
+# One process per number of partials of -ad. A plain run (0) gets no extra argument.
+run_partials () {
+    local base=$args
+    for partials in "${PARTIALS[@]}"; do
+        args_ad=""; (( partials > 0 )) && args_ad="--partials=$partials"
+        args="$base${args_ad:+ $args_ad}"
+        run_benchmark
+    done
 }
 
 # Linux only: stop if a CPU is capped or there are too few CPUs for the threads (Julia also runs an
@@ -183,6 +193,7 @@ display_info () {
  - Size:          ${LOG2P[@]:0:$NCASES}
  - Sim. steps:    ${MAXSTEPS[@]:0:$NCASES}
  - Data type:     ${FTYPE[@]:0:$NCASES}
+ - AD partials:   ${PARTIALS[@]}
  - Developed:     ${DEVELOPED:-(transient)}
  - Update env:    $UPDATE
  - Repeats:       $REPEATS"
@@ -204,6 +215,7 @@ THREADS=('4')
 UPDATE=false
 REPEATS=1                                                 # -r: repeat the whole sweep in new processes
 FORCE=false                                               # -f: run even if check_machine finds a problem
+PARTIALS=(0)                                              # -ad: partials of the ForwardDiff.Dual numbers of each run, 0 = plain floats
 DEVELOPED="checkpoints"                                   # -dev <dir>: developed-flow checkpoints; "" times the transient
 # Default sweep (run when -c is omitted) and per-case defaults for omitted -p/-s/-ft.
 CASES=('tgv' 'jelly-biotsavart')
@@ -258,6 +270,10 @@ case "$1" in
     FTYPE=($2)
     shift
     ;;
+    --partials|-ad)
+    PARTIALS=($2)
+    shift
+    ;;
     --data_dir|-dd)
     DATA_DIR=($2)
     shift
@@ -301,6 +317,17 @@ done
 if ! [[ "$REPEATS" =~ ^[1-9][0-9]*$ ]]; then
     echo "ERROR: Invalid value '$REPEATS' for --repeats/-r (expected a positive integer)" >&2; exit 1
 fi
+
+# Assert "--partials" holds non-negative integers, and that its AD runs (> 0) leave out the Biot-Savart cases:
+# BiotSavartBCs does not run with ForwardDiff.Dual numbers (the atomic update of the residual in its `_biotBC!`)
+(( ${#PARTIALS[@]} )) || { echo "ERROR: --partials/-ad needs at least one value, e.g. -ad \"0 4\"" >&2; exit 1; }
+for n in "${PARTIALS[@]}"; do
+    [[ "$n" =~ ^(0|[1-9][0-9]*)$ ]] || { echo "ERROR: Invalid value '$n' for --partials/-ad (expected integers >= 0, e.g. -ad \"0 4\")" >&2; exit 1; }
+    (( n == 0 )) && continue
+    for c in "${CASES[@]}"; do
+        [[ $c == *-biotsavart ]] && { echo "ERROR: -ad $n cannot run '$c': BiotSavartBCs does not support ForwardDiff.Dual numbers. Pick other cases, e.g. -c \"tgv sphere\"." >&2; exit 1; }
+    done
+done
 
 # Stop before touching anything if the machine would distort the timings
 check_machine
@@ -409,12 +436,12 @@ for rep in $(seq 1 $REPEATS) ; do
                     for thread in "${THREADS[@]}" ; do
                         args="-t $thread ${THIS_DIR}/src/benchmark.jl --backend=$backend $args_cases $args_rep"
                         update_environment
-                        run_benchmark
+                        run_partials
                     done
                 else
                     args="${THIS_DIR}/src/benchmark.jl --backend=$backend $args_cases $args_rep"
                     update_environment
-                    run_benchmark
+                    run_partials
                 fi
             done
         done

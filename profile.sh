@@ -77,6 +77,7 @@ display_info () {
  - Size:          ${LOG2P[@]:0:$NCASES}
  - Sim. steps:    $MAXSTEPS
  - Data type:     $FTYPE
+ - AD partials:   $PARTIALS
  - File:          $FILE
  - Profiling:     ${NSIGHT[@]}
  - Kernels:       ${KERNELS[@]}"
@@ -98,6 +99,7 @@ CASES=() # ('tgv' 'sphere' 'cylinder')
 LOG2P=() # ('8' '5' '6')
 MAXSTEPS='1000'
 FTYPE='Float32'
+PARTIALS='0' # -ad: partials of the ForwardDiff.Dual numbers of the runs, 0 = plain floats
 RUN='0'
 FILE='src/profile.jl'
 
@@ -144,6 +146,10 @@ case "$1" in
     FTYPE=($2)
     shift
     ;;
+    --partials|-ad)
+    PARTIALS=$2
+    shift
+    ;;
     --data_dir|-dd)
     DATA_DIR=($2)
     shift
@@ -166,6 +172,9 @@ case "$1" in
 esac
 shift
 done
+
+## Assert "--partials" is a single non-negative integer
+[[ "$PARTIALS" =~ ^(0|[1-9][0-9]*)$ ]] || { echo "ERROR: Invalid value '$PARTIALS' for --partials/-ad (expected one integer >= 0)" >&2; exit 1; }
 
 ## Assert all case arguments have equal size
 NCASES=${#CASES[@]}
@@ -220,6 +229,7 @@ update_environment
 
 ## Profiling
 args_cases="--backend=$BACKEND --max_steps=$MAXSTEPS --ftype=$FTYPE --data_dir=$DATA_DIR --plot_dir=$PLOT_DIR"
+(( PARTIALS > 0 )) && args_cases="$args_cases --partials=$PARTIALS"
 for ((i = 0; i < ${#CASES[@]}; ++i)); do
     case=${CASES[$i]}
     mkdir -p $DATA_DIR/$case
