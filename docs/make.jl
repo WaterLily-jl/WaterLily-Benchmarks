@@ -33,6 +33,7 @@ makedocs(;
             "Environments" => "environments.md",
             "Profiling" => "profiling.md",
             "Clusters and data" => "clusters.md",
+            "MPI scaling" => "mpi.md",
         ],
         "Pull-request benchmarks" => "pull-requests.md",
         "Methodology" => "methodology.md",

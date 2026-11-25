@@ -123,7 +123,8 @@ function annotated_groupedbar(xx, yy, group; series_annotations="", bar_width=1.
     for i in 1:n, j in 1:m
         y0 = gp[1][2j][:y][i]*1.4# + 0.04*dy
         if isfinite(y0)
-            Plots.annotate!(x2[(i-1)*m + j]*1.02, y0, Plots.text(series_annotations[k], :center, :black, speedup_fontsize))  # qualified: PrettyTables also exports annotate!
+            Plots.annotate!(x2[(i-1)*m + j]*1.02, y0, Plots.text(series_annotations[k], :center, :black,
+                            round(Int, speedup_fontsize*min(1, 5/m))))  # smaller with many bars; qualified: PrettyTables also exports annotate!
             k += 1
         end
     end

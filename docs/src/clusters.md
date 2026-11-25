@@ -14,6 +14,8 @@ Adapt the account, partition and `WATERLILY_DIR` to yours. A few things to keep 
 - The first run of a new clone installs the benchmark environment, the first GPU run makes the GPU environment (`gpu/CUDA` or `gpu/AMDGPU`), and `-u true` updates them (see [Updating the environment](@ref)). All of these download packages, so they need internet access.
 - `mn5.sh` sets its own `JULIA_DEPOT_PATH` for the accelerated partition.
 
+The MPI scaling jobs (JUPITER and Snellius) are in `mpi/jobs/`, see [MPI scaling](mpi.md).
+
 ## Published data
 
 The raw data of studies reported in issues, pull requests or papers are kept in [WaterLily-Benchmarks-data](https://github.com/WaterLily-jl/WaterLily-Benchmarks-data): one folder per study, with the JSON files as `benchmark.sh` wrote them, the resolved `Manifest.toml` files, and a README with the hardware, the software versions and the exact commands. `compare.jl` reads a study's `data/` folder directly:
