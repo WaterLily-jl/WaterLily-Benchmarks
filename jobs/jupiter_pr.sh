@@ -34,13 +34,17 @@
 #   mkdir -p gpu/CUDA && cp Project.toml gpu/CUDA/ && julia --project=gpu/CUDA -e \
 #       'using Pkg; Pkg.develop(path=ENV["WATERLILY_DIR"]); Pkg.add("CUDA"); Pkg.update(); Pkg.precompile()' \
 #       && cp Project.toml gpu/CUDA/Project.base.toml
+#   julia --project=. -e 'using WaterLily, BiotSavartBCs' && julia --project=gpu/CUDA -e \
+#       'using CUDA, WaterLily, BiotSavartBCs; CUDA.versioninfo()'   # what the job loads, so nothing is left to download
 #
-# The job stops before the first run if a commit is missing from the clone or WaterLily does not load from it in
-# either environment, and prints the packages it runs with. benchmark.sh checks the versions out in WaterLily.jl-master
+# The job stops before the first run if a commit is missing from the clone, if WaterLily does not load from it in
+# either environment or if KernelAbstractions is older than 0.10, and prints the packages it runs with. benchmark.sh checks the versions out in WaterLily.jl-master
 # and writes LocalPreferences.toml (the WaterLily backend of the next run), so no other benchmark.sh job may run at
 # the same time; the clone is left at the last version it ran. Cores, modules and Julia as jobs/jupiter_single_device.sh:
 # the first Grace (cores 0-71, next to GPU 0), each PoCL thread pinned to a core, GCC and git only, Julia 1.13.
-# Time: 24 processes (4 backends, 2 versions, 3 repetitions), each a few minutes of compilation and runs.
+# Time: 24 processes (4 backends, 2 versions, 3 repetitions), each a few minutes of compilation and about a minute of
+# timed steps (on one laptop core the 125 timed steps of jelly-biotsavart 5,6 take 48 s), so 1 to 2 h. A job stopped at the
+# limit keeps the result files written so far; the last line, compare.jl, can be run again by hand.
 
 cd "$SLURM_SUBMIT_DIR"
 WL_BASE="${WL_BASE:-$(cd "$SLURM_SUBMIT_DIR/.." && pwd)}"
@@ -57,11 +61,12 @@ for v in $WL_VERSIONS; do
         { echo "no commit $v in $WATERLILY_DIR: git fetch origin there, on a login node" >&2; exit 1; }
 done
 git -C "$WATERLILY_DIR" checkout -q --detach ${WL_VERSIONS%% *} || exit 1
-SHOW='using Pkg, WaterLily, BiotSavartBCs; println(pathof(WaterLily)); Pkg.status()'
+SHOW='using Pkg, WaterLily, BiotSavartBCs, KernelAbstractions; println(pathof(WaterLily)); Pkg.status()
+      pkgversion(KernelAbstractions) >= v"0.10" || error("KernelAbstractions $(pkgversion(KernelAbstractions)), 0.10 needed")'
 julia --project=. -e "$SHOW" && julia --project=gpu/CUDA -e "using CUDA; $SHOW; CUDA.versioninfo()" ||
-    { echo "WaterLily ${WL_VERSIONS%% *} does not load: prepare the environments on a login node (see the header)" >&2; exit 1; }
+    { echo "the environments are not ready for WaterLily ${WL_VERSIONS%% *}: prepare them on a login node (see the header)" >&2; exit 1; }
 lscpu | grep -E "^NUMA node[0-9]+ CPU\(s\)" | grep -v "CPU(s):\s*$"; nvidia-smi -L
-echo "WaterLily $WL_VERSIONS in $WATERLILY_DIR, $(julia --version), results in $DATA"
+echo "WaterLily $WL_VERSIONS in $WATERLILY_DIR, $(julia --version), depot $JULIA_DEPOT_PATH, results in $DATA"
 
 taskset -c 0-71 ./benchmark.sh -b "Array CuArray" -t "1 4 8" -w "$WL_VERSIONS" -u false -r 3 -f -dd "$DATA" "$@" || exit 1
 julia --project=. compare.jl --data_dir="$DATA" --sort=1 --markdown
