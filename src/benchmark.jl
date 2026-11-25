@@ -25,16 +25,16 @@ function collect_runs!(group, s, resets, allocs)
 end
 
 # Generate benchmarks
-function run_benchmarks(cases, log2p, max_steps, ftype, backend, bstr; data_dir="./", developed="", rep="", npartials=0)
-    for (case, p, s, ft) in zip(cases, log2p, max_steps, ftype)
-        println("Benchmarking: $(case)  ($(N_RUNS) runs × $(s) steps)", npartials > 0 ? ", $(ft) with $(npartials) partials" : "")
+function run_benchmarks(cases, log2p, max_steps, ftype, backend, bstr; data_dir="./", developed="", rep="", npartials=fill(0, length(cases)))
+    for (case, p, s, ft, N) in zip(cases, log2p, max_steps, ftype, npartials)
+        println("Benchmarking: $(case)  ($(N_RUNS) runs × $(s) steps)", N > 0 ? ", $(ft) with $(N) partials" : "")
         suite = BenchmarkGroup()
-        fp = fp_label(ft, npartials)  # `ft`, or "<ft>+ad<N>" for an AD run
+        fp = fp_label(ft, N)  # `ft`, or "<ft>+ad<N>" for an AD run
         results = BenchmarkGroup([case, "sim_step!", p, s, fp, bstr, run_hash, string(VERSION)])
         resets = []                  # per-size (sim, fname, dir) to reset before each run
         allocs = Dict{String,Int}()  # per-size block-averaged allocations per step
         add_to_suite!(suite, getf(case); case=case, p=p, s=s, ft=ft, backend=backend, bstr=bstr,
-            remeasure = remeasure_case(case), developed=developed, resets=resets, allocs=allocs, npartials=npartials
+            remeasure = remeasure_case(case), developed=developed, resets=resets, allocs=allocs, npartials=N
         ) # create benchmark
         GC.gc()
         results[bstr] = collect_runs!(suite[bstr], s, resets, allocs) # run!
@@ -54,8 +54,8 @@ developed = isnothing(_devi) ? "checkpoints" : split(ARGS[_devi], "="; limit=2)[
 # `--rep=<n>` (benchmark.sh -r): repetition index, appended to the file name
 _repi = findfirst(a -> startswith(a, "--rep="), ARGS)
 rep = isnothing(_repi) ? "" : "_r" * split(ARGS[_repi], "="; limit=2)[2]
-# `--partials=<N>` (benchmark.sh -ad): time the cases with ForwardDiff.Dual numbers of N partials, see util.jl
-npartials = partials_arg(ARGS)
+# `--partials=[N1,N2,...]` (benchmark.sh -ft <ftype>+ad<N>): the cases with N > 0 run with ForwardDiff.Dual numbers, see util.jl
+npartials = partials_arg(ARGS, length(cases))
 check_ad_cases(cases, npartials)
 
 # With -bs, benchmark.sh points BiotSavartBCs at a local clone: its commit joins the WaterLily one in the tags,

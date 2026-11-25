@@ -124,17 +124,7 @@ update_environment () {
 run_benchmark () {
     full_args=(--project=${project} --startup-file=no $args)
     echo "Running: julia ${full_args[@]}"
-    julia_cmd || { echo "ERROR: the benchmark failed (WaterLily $wl_version, Julia $version, $backend, -t ${thread:-auto}${args_ad:+, -ad $partials}), stopping the sweep." >&2; exit 1; }
-}
-
-# One process per number of partials of -ad. A plain run (0) gets no extra argument.
-run_partials () {
-    local base=$args
-    for partials in "${PARTIALS[@]}"; do
-        args_ad=""; (( partials > 0 )) && args_ad="--partials=$partials"
-        args="$base${args_ad:+ $args_ad}"
-        run_benchmark
-    done
+    julia_cmd || { echo "ERROR: the benchmark failed (WaterLily $wl_version, Julia $version, $backend, -t ${thread:-auto}), stopping the sweep." >&2; exit 1; }
 }
 
 # Linux only: stop if a CPU is capped or there are too few CPUs for the threads (Julia also runs an
@@ -192,8 +182,7 @@ display_info () {
     echo " - Cases:         ${CASES[@]}
  - Size:          ${LOG2P[@]:0:$NCASES}
  - Sim. steps:    ${MAXSTEPS[@]:0:$NCASES}
- - Data type:     ${FTYPE[@]:0:$NCASES}
- - AD partials:   ${PARTIALS[@]}
+ - Data type:     ${FTYPE_IN[@]:0:$NCASES}
  - Developed:     ${DEVELOPED:-(transient)}
  - Update env:    $UPDATE
  - Repeats:       $REPEATS"
@@ -215,7 +204,6 @@ THREADS=('4')
 UPDATE=false
 REPEATS=1                                                 # -r: repeat the whole sweep in new processes
 FORCE=false                                               # -f: run even if check_machine finds a problem
-PARTIALS=(0)                                              # -ad: partials of the ForwardDiff.Dual numbers of each run, 0 = plain floats
 DEVELOPED="checkpoints"                                   # -dev <dir>: developed-flow checkpoints; "" times the transient
 # Default sweep (run when -c is omitted) and per-case defaults for omitted -p/-s/-ft.
 CASES=('tgv' 'jelly-biotsavart')
@@ -270,10 +258,6 @@ case "$1" in
     FTYPE=($2)
     shift
     ;;
-    --partials|-ad)
-    PARTIALS=($2)
-    shift
-    ;;
     --data_dir|-dd)
     DATA_DIR=($2)
     shift
@@ -318,17 +302,6 @@ if ! [[ "$REPEATS" =~ ^[1-9][0-9]*$ ]]; then
     echo "ERROR: Invalid value '$REPEATS' for --repeats/-r (expected a positive integer)" >&2; exit 1
 fi
 
-# Assert "--partials" holds non-negative integers, and that its AD runs (> 0) leave out the Biot-Savart cases:
-# BiotSavartBCs does not run with ForwardDiff.Dual numbers (the atomic update of the residual in its `_biotBC!`)
-(( ${#PARTIALS[@]} )) || { echo "ERROR: --partials/-ad needs at least one value, e.g. -ad \"0 4\"" >&2; exit 1; }
-for n in "${PARTIALS[@]}"; do
-    [[ "$n" =~ ^(0|[1-9][0-9]*)$ ]] || { echo "ERROR: Invalid value '$n' for --partials/-ad (expected integers >= 0, e.g. -ad \"0 4\")" >&2; exit 1; }
-    (( n == 0 )) && continue
-    for c in "${CASES[@]}"; do
-        [[ $c == *-biotsavart ]] && { echo "ERROR: -ad $n cannot run '$c': BiotSavartBCs does not support ForwardDiff.Dual numbers. Pick other cases, e.g. -c \"tgv sphere\"." >&2; exit 1; }
-    done
-done
-
 # Stop before touching anything if the machine would distort the timings
 check_machine
 
@@ -342,6 +315,21 @@ done
 expand -p  "$dP"  "${LOG2P[@]}";    LOG2P=("${R[@]}")
 expand -s  "$dS"  "${MAXSTEPS[@]}"; MAXSTEPS=("${R[@]}")
 expand -ft "$dFT" "${FTYPE[@]}";    FTYPE=("${R[@]}")
+
+# A float type "<ftype>+ad<N>" is a forward-mode AD run of its case: ForwardDiff.Dual numbers over <ftype> with N partials.
+# FTYPE keeps the float types and PARTIALS the partials (0 = plain floats). The Biot-Savart cases are refused:
+# BiotSavartBCs does not run with Dual numbers (the atomic update of the residual in its `_biotBC!`).
+FTYPE_IN=("${FTYPE[@]}"); PARTIALS=(); AD=false
+for ((i=0; i<NCASES; i++)); do
+    if [[ ${FTYPE[$i]} =~ ^([A-Za-z0-9]+)\+ad([1-9][0-9]*)$ ]]; then
+        FTYPE[$i]=${BASH_REMATCH[1]}; PARTIALS+=("${BASH_REMATCH[2]}"); AD=true
+        [[ ${CASES[$i]} == *-biotsavart ]] && { echo "ERROR: -ft ${FTYPE_IN[$i]} cannot run '${CASES[$i]}': BiotSavartBCs does not support ForwardDiff.Dual numbers. Give that case a plain float type, e.g. -c \"tgv ${CASES[$i]}\" -ft \"${FTYPE_IN[$i]} Float32\"." >&2; exit 1; }
+    elif [[ ${FTYPE[$i]} == *+* ]]; then
+        echo "ERROR: Invalid value '${FTYPE[$i]}' for --float_type/-ft (an AD run is <ftype>+ad<N> with N >= 1, e.g. Float32+ad4)" >&2; exit 1
+    else
+        PARTIALS+=(0)
+    fi
+done
 fetch_checkpoints  # only the checkpoints of this sweep, if they are git-LFS pointers
 
 # Check WATERLILY_DIR is set and functional
@@ -410,6 +398,7 @@ MAXSTEPS=$(join_array_comma "${MAXSTEPS[*]}")
 FTYPE=$(join_array_comma "${FTYPE[*]}")
 args_cases="--cases=$CASES --log2p=$LOG2P --max_steps=$MAXSTEPS --ftype=$FTYPE --data_dir=$DATA_DIR"
 args_cases="$args_cases --developed=$DEVELOPED"  # always forwarded, so -dev "" reaches src/benchmark.jl
+$AD && args_cases="$args_cases --partials=$(join_array_comma "${PARTIALS[*]}")"  # the partials of each case, only with AD runs
 
 # Benchmarks. With -r N the sweep runs N times in new processes, reversing the version order on even
 # repetitions, to sample a machine state that outlives a process. compare.jl merges the repetitions.
@@ -436,12 +425,12 @@ for rep in $(seq 1 $REPEATS) ; do
                     for thread in "${THREADS[@]}" ; do
                         args="-t $thread ${THIS_DIR}/src/benchmark.jl --backend=$backend $args_cases $args_rep"
                         update_environment
-                        run_partials
+                        run_benchmark
                     done
                 else
                     args="${THIS_DIR}/src/benchmark.jl --backend=$backend $args_cases $args_rep"
                     update_environment
-                    run_partials
+                    run_benchmark
                 fi
             done
         done

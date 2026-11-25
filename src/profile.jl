@@ -27,8 +27,8 @@ if metaparse(arg_value("run")) == 1 # run profiling
     max_steps = !isnothing(iarg("max_steps")) ? arg_value("max_steps") |> metaparse : 1000
     ftype = !isnothing(iarg("ftype")) ? arg_value("ftype") |> metaparse : Float32
     backend = arg_value("backend") |> x -> eval(Symbol(x))
-    npartials = partials_arg(ARGS)  # `--partials=<N>` (profile.sh -ad): ForwardDiff.Dual numbers of N partials
-    check_ad_cases([case], npartials)
+    npartials = partials_arg(ARGS)[1]  # `--partials=<N>` (profile.sh -ft <ftype>+ad<N>): ForwardDiff.Dual numbers of N partials
+    check_ad_cases([case], [npartials])
 
     sim = getf(case)(log2p, backend; T=value_type(ftype, npartials))
     run_profiling(sim, max_steps; remeasure=remeasure_case(case))

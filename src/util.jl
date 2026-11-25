@@ -15,12 +15,15 @@ parsestringlist(x) = filter(!isempty, occursin(',',x) ? split(x,',') : split(x,'
 checkpoint_name(case, p, ft) = "$(case)_$(p)_$(ft).jld2"
 remeasure_case(case) = case in ("cylinder", "cylinder-biotsavart", "jelly-biotsavart")  # moving bodies
 
-# Forward-mode AD runs (benchmark.sh -ad N): the float type of the tags and file names gets a `+ad<N>` suffix, which keeps
-# them apart from the plain runs. `--partials=` is matched exactly, since `iarg` also finds the word inside other values.
-function partials_arg(args)
+# Forward-mode AD runs (benchmark.sh -ft <ftype>+ad<N>): `--partials=[N1,N2,...]` gives the partials of each case (one number:
+# of all cases) and the float type of the tags and file names gets the `+ad<N>` suffix, which keeps them apart from the plain
+# runs. `--partials=` is matched exactly, since `iarg` also finds the word inside other values.
+function partials_arg(args, ncases=1)
     i = findfirst(startswith("--partials="), args)
-    N = isnothing(i) ? 0 : tryparse(Int, split(args[i], "="; limit=2)[2])
-    (isnothing(N) || N < 0) && error("--partials takes the number of partials, 0 or more: got '$(args[i])'")
+    isnothing(i) && return fill(0, ncases)
+    N = [parse(Int, m.match) for m in eachmatch(r"-?\d+", split(args[i], "="; limit=2)[2])]
+    length(N) == 1 && (N = fill(N[1], ncases))
+    (length(N) == ncases && all(>=(0), N)) || error("--partials takes the partials of each of the $ncases case(s), 0 or more: got '$(args[i])'")
     return N
 end
 fp_label(ft, N) = N == 0 ? ft : "$(ft)+ad$(N)"
@@ -30,9 +33,9 @@ function split_fp(label)  # "Float32+ad4" -> ("Float32", 4)
 end
 # BiotSavartBCs updates its residual with an atomic `+=` (`_biotBC!`), and atomics do not take Dual numbers
 function check_ad_cases(cases, N)
-    bad = filter(endswith("-biotsavart"), cases)
-    N > 0 && !isempty(bad) && error("AD runs (--partials=$N) do not support the Biot-Savart cases ($(join(bad, ", "))): " *
-        "BiotSavartBCs does not run with ForwardDiff.Dual numbers. Pick other cases, e.g. -c \"tgv sphere\".")
+    bad = [c for (c, n) in zip(cases, N) if n > 0 && endswith(c, "-biotsavart")]
+    isempty(bad) || error("AD runs do not support the Biot-Savart cases ($(join(bad, ", "))): BiotSavartBCs does not run " *
+        "with ForwardDiff.Dual numbers. Give them a plain float type, or pick other cases.")
 end
 
 function parse_cla(args; cases=["tgv"], log2p=[(6,7)], max_steps=[100], ftype=[Float32], backend=Array, data_dir="data/")
@@ -244,7 +247,7 @@ checkpoint_log2p = Dict(
 
 # CLA of develop.jl and visualize.jl: all cases at their checkpoint sizes in Float32, unless ARGS say otherwise
 function parse_checkpoint_cla(args)
-    partials_arg(args) > 0 && error("Checkpoints hold values only: AD runs (--partials) start from the plain ones, so leave --partials out here.")
+    any(>(0), partials_arg(args)) && error("Checkpoints hold values only: AD runs (--partials) start from the plain ones, so leave --partials out here.")
     cases = parse_cla(args; cases=all_cases)[1]
     return parse_cla(args; cases, log2p=[checkpoint_log2p[c] for c in cases], ftype=fill(Float32, length(cases)),
                      backend=Array, data_dir="checkpoints/")

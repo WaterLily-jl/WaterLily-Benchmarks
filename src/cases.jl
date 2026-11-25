@@ -3,7 +3,7 @@ using BiotSavartBCs
 using StaticArrays
 using WaterLily.ForwardDiff: Dual, Partials, Tag, partials, value
 
-# Value type of a run: `ft`, or for `benchmark.sh -ad N` a Dual over `ft` with N partials (WaterLily's own ForwardDiff)
+# Value type of a run: `ft`, or for `benchmark.sh -ft <ft>+ad<N>` a Dual over `ft` with N partials (WaterLily's own ForwardDiff)
 struct ADInput end
 value_type(ft, N) = N == 0 ? ft : Dual{typeof(Tag(ADInput(), ft)),ft,N}
 # The differentiated input of a case: with a Dual `T`, `Re` carries partial 1 and the other partials stay zero

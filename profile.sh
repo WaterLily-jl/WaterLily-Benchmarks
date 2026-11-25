@@ -76,8 +76,7 @@ display_info () {
  - Cases:         ${CASES[@]}
  - Size:          ${LOG2P[@]:0:$NCASES}
  - Sim. steps:    $MAXSTEPS
- - Data type:     $FTYPE
- - AD partials:   $PARTIALS
+ - Data type:     $FTYPE_IN
  - File:          $FILE
  - Profiling:     ${NSIGHT[@]}
  - Kernels:       ${KERNELS[@]}"
@@ -99,7 +98,6 @@ CASES=() # ('tgv' 'sphere' 'cylinder')
 LOG2P=() # ('8' '5' '6')
 MAXSTEPS='1000'
 FTYPE='Float32'
-PARTIALS='0' # -ad: partials of the ForwardDiff.Dual numbers of the runs, 0 = plain floats
 RUN='0'
 FILE='src/profile.jl'
 
@@ -146,10 +144,6 @@ case "$1" in
     FTYPE=($2)
     shift
     ;;
-    --partials|-ad)
-    PARTIALS=$2
-    shift
-    ;;
     --data_dir|-dd)
     DATA_DIR=($2)
     shift
@@ -173,8 +167,13 @@ esac
 shift
 done
 
-## Assert "--partials" is a single non-negative integer
-[[ "$PARTIALS" =~ ^(0|[1-9][0-9]*)$ ]] || { echo "ERROR: Invalid value '$PARTIALS' for --partials/-ad (expected one integer >= 0)" >&2; exit 1; }
+## A float type "<ftype>+ad<N>" profiles with ForwardDiff.Dual numbers over <ftype> with N partials (see benchmark.sh)
+FTYPE_IN=$FTYPE; PARTIALS=0
+if [[ $FTYPE =~ ^([A-Za-z0-9]+)\+ad([1-9][0-9]*)$ ]]; then
+    FTYPE=${BASH_REMATCH[1]}; PARTIALS=${BASH_REMATCH[2]}
+elif [[ $FTYPE == *+* ]]; then
+    echo "ERROR: Invalid value '$FTYPE' for --float_type/-ft (an AD run is <ftype>+ad<N> with N >= 1, e.g. Float32+ad4)" >&2; exit 1
+fi
 
 ## Assert all case arguments have equal size
 NCASES=${#CASES[@]}

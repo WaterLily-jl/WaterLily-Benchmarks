@@ -1,6 +1,6 @@
 # Comparing results
 
-[`compare.jl`](https://github.com/WaterLily-jl/WaterLily-Benchmarks/blob/main/compare.jl) reads the JSON files of `benchmark.sh` and prints one table per case and size, with one row per backend, WaterLily ref, Julia version and float type, where the float type of an AD run (`benchmark.sh -ad`) includes its partials, e.g. `Float32+ad4`. [Methodology](methodology.md) explains how the columns are measured.
+[`compare.jl`](https://github.com/WaterLily-jl/WaterLily-Benchmarks/blob/main/compare.jl) reads the JSON files of `benchmark.sh` and prints one table per case and size, with one row per backend, WaterLily ref, Julia version and float type, where the float type of an AD run (`benchmark.sh -ft Float32+ad4`) includes its partials. [Methodology](methodology.md) explains how the columns are measured.
 
 ```sh
 julia --project compare.jl --data_dir=data/benchmark --patterns="tgv jelly-biotsavart" --speedup_base=CPUx01 --sort=Backend
@@ -37,7 +37,7 @@ In the text tables the speedup baseline row is blue and the fastest row of each 
 
 ## AD runs
 
-The runs of `benchmark.sh -ad` are rows of the same table, listed after the plain rows of their backend with `FP = <ftype>+ad<N>`:
+The AD runs of `benchmark.sh` (`-ft <ftype>+ad<N>`) are rows of the same table, listed after the plain rows of their backend with `FP = <ftype>+ad<N>`:
 
 - The plain rows come first, so the default baseline and `--speedup_base=main` are plain rows. `Speedup` of an AD row is then below 1, and its inverse is the cost of the partials: `0.25` means that a step with those partials takes 4 plain steps.
 - The reference row of an AD row has the same number of partials: `Δ ± σ` compares the WaterLily refs at equal partials, e.g. `my-branch` with 4 partials against `main` with 4 partials. A row whose number of partials was not run for the baseline's ref prints `-`.
@@ -45,7 +45,7 @@ The runs of `benchmark.sh -ad` are rows of the same table, listed after the plai
 - The plots only show the rows with the partials of the baseline.
 - A baseline can also be an AD row, e.g. `--speedup_base="main,Float32+ad4"`: `Speedup` is then relative to that row, and each `Δ ± σ` still compares equal partials.
 
-`tgv` at `log2p = 7` on a laptop GPU, `main` against a branch that changes how the `Dual` kernels are compiled ([WaterLily.jl#408](https://github.com/WaterLily-jl/WaterLily.jl/pull/408)), from a sweep with `-b CuArray -ad "0 4 8" -r 3` and `compare.jl --speedup_base=main`:
+`tgv` at `log2p = 7` on a laptop GPU, `main` against a branch that changes how the `Dual` kernels are compiled ([WaterLily.jl#408](https://github.com/WaterLily-jl/WaterLily.jl/pull/408)), from a sweep with `-b CuArray -c "tgv tgv tgv" -ft "Float32 Float32+ad4 Float32+ad8" -r 3` and `compare.jl --speedup_base=main`:
 
 ```
 ▶ log2p = 7

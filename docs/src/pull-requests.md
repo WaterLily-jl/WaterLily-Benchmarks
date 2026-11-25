@@ -9,7 +9,7 @@ A maintainer of [WaterLily.jl](https://github.com/WaterLily-jl/WaterLily.jl) can
 
 optionally followed by [`benchmark.sh` options](benchmarks.md) on the same line. The workflow fetches the pull request as the branch `pr-<number>`, runs both refs on a GitHub-hosted runner, and posts the `compare.jl` table as a comment, which later runs update. By default it runs the default cases on CPUx01 (SIMD) and CPUx02 (KernelAbstractions), in 2 repetitions. A hosted runner is noisy: read `Signif` before `Δ` (see [Methodology](methodology.md)). The reference is the tip of `main`, not the merge base.
 
-`-ad` adds [forward-mode AD runs](@ref "Forward-mode AD"), which need cases without Biot-Savart boundaries and are slow on the CPU, so keep them small: `/benchmark -c tgv -p 6 -s 10 -ad "0 2"`.
+An AD float type gives [forward-mode AD runs](@ref "Forward-mode AD"), which need cases without Biot-Savart boundaries and are slow on the CPU, so keep them small: `/benchmark -c "tgv tgv" -p 6 -s 10 -ft "Float32 Float32+ad2"`.
 
 `-w` and `-bs` replace the refs, the first run being the baseline: `/benchmark -w "pr-123 pr-123" -bs "main my-branch"` compares two BiotSavartBCs.jl branches on the pull request's WaterLily (see [BiotSavartBCs changes](biotsavart.md)). The workflow can also be started from the Actions tab of WaterLily.jl (`workflow_dispatch`), with the pull request number and the arguments.
 

@@ -1,6 +1,6 @@
 # Cases and checkpoints
 
-Each case is a function in [`src/cases.jl`](https://github.com/WaterLily-jl/WaterLily-Benchmarks/blob/main/src/cases.jl) that returns a WaterLily `Simulation` for a size `log2p`, a backend and a value type `T`: a float type, or a `ForwardDiff.Dual` over it for the [AD runs](@ref "Forward-mode AD") of `benchmark.sh -ad`. The `-biotsavart` cases use the open boundaries of [BiotSavartBCs.jl](https://github.com/WaterLily-jl/BiotSavartBCs.jl) instead of WaterLily's default ones, and solve the pressure Poisson equation through its `mom_project!` (see [BiotSavartBCs changes](biotsavart.md)).
+Each case is a function in [`src/cases.jl`](https://github.com/WaterLily-jl/WaterLily-Benchmarks/blob/main/src/cases.jl) that returns a WaterLily `Simulation` for a size `log2p`, a backend and a value type `T`: a float type, or a `ForwardDiff.Dual` over it for the [AD runs](@ref "Forward-mode AD") of `benchmark.sh -ft <ftype>+ad<N>`. The `-biotsavart` cases use the open boundaries of [BiotSavartBCs.jl](https://github.com/WaterLily-jl/BiotSavartBCs.jl) instead of WaterLily's default ones, and solve the pressure Poisson equation through its `mom_project!` (see [BiotSavartBCs changes](biotsavart.md)).
 
 | Case | Flow | Grid (cells), `n = 2^log2p` | Default `-p` | Checkpoints |
 |---|---|---|---|---|
