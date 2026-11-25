@@ -146,6 +146,7 @@ sbatch --reservation=develbooster -N 4 --time=00:30:00 mpi/jobs/jupiter_ad.sh   
 sbatch -N 8 --time=00:30:00 mpi/jobs/jupiter_ad.sh                     # 32 GPUs, 14 runs
 sbatch -N 16 --time=00:30:00 mpi/jobs/jupiter_ad.sh                    # 64 GPUs, 14 runs
 unset AD_ARGS AD_LAPS AD_TOL AD_DEVICE AD_MORE_PARTIALS AD_PLAIN       # or later jobs of this shell inherit them
+julia mpi/collect.jl --table --out=data/mpi/jupiter_ad_fastdual.csv data/mpi/jupiter_ad_{3113571,3113572,3113578,3113580,3113581}   # these jobs only
 ```
 
 The lines name no account: add `-A <budget>` where Slurm has no default one (the submit filter then asks for it). The times are those of the jobs of 2026-11-23 (0.9 to 1.4 min per run); each run has a limit of its own (`RUN_MINUTES`, default 10, passed to `srun --time`), so that one that hangs does not take the rest of the job with it, and the jobs ask for 1 h 30 (`jupiter_ad.sh`) and 40 min (`jupiter_ad_check.sh`) unless `--time` says otherwise. The blocks fit: `Float32` takes 128.3 B per cell at `256^3`, so `512^3` on one GPU needs 17 GB and 69 GB with 3 partials, of the 97.9 GB of a GH200, and `256^3` with 8 partials 19 GB. Every run writes its whole output to `data/mpi/jupiter_ad_<job>/<point>_<run>.txt`, and the job prints the table of its runs and writes `runs.csv` there. `mpi/collect.jl` reads everything from what the runs printed, not from file names: the commits, the eltype and its partials, the ranks, the mode and the sizes, the time per step, the mean Poisson iterations, the pressure tolerance when set, the transport (`gpu_aware`), the halo phases of a run with `--laps` and the memory. It adds, per run with partials, `ms_ratio` and `mem_ratio` against the mean of the `Float32` runs of the same job and point (`iters_differ` flags a pair whose Poisson iterations differ: the ratio then holds another amount of work) `cost_per_partial`, which is `(t(N)/t(0) - 1)/N`, and `cost_fit`, the `c` of `t(N)/t(0) = 1 + c N` fitted to the runs of that point with up to 3 partials (`c = 1` is the cost of `N` more solves); and, per timed run, `efficiency`, the parallel efficiency against the runs on the fewest ranks (`eff_ref_np`) of its curve among the files given (same mode, size, eltype, partials, tolerance and transport, across jobs, so it holds the scatter between allocations that the ratios do not). It also reads the job outputs of `mpi/jobs/submit.sh`, several runs per file, so the `Float32` curves of earlier jobs can go in the same table. The check job writes to `data/mpi/jupiter_adcheck_<job>/`, with its tables in `summary.txt`; its runs have no warm-up, so they are no timings.
@@ -193,6 +194,44 @@ Correctness (`jupiter_ad_check.sh`, TGV `128^3`, 100 steps from the initial cond
 - The default tolerance against the converged derivative (`julia mpi/check.jl ad64_gpu_serial.csv ad_gpu_serial.csv ad_gpu_np4.csv ad_gpu_np8.csv ad_cpu_np8.csv`): `dKE_dnu` of the last record is 1.3 % off on one GPU, 0.17 % on 4, 0.32 % on 8 and 8.9 % on 8 CPU ranks (largest 2.4 %, 0.4 %, 1.2 % and 19.8 %). The four runs agree with the reference to `7e-4` or better through step 30, depart between steps 40 and 60 and then keep an offset, so it is one event whose size depends on the backend and the decomposition, not a smooth drift (cause not diagnosed; the CPU and GPU runs on 8 ranks share their time, time step, `umax` and `pmax` to `9e-7`). With converged solves nothing of it is left (the first two points).
 
 The columns `dumax_dnu` and `dpmax_dnu` of those tables reach order 1: derivatives of a maximum over the cells, which jump when the cell of the maximum changes. On CPU arrays the kinetic energy and the enstrophy of the records carry `2e-5` of noise, since the diagnostic sums a `Float32` view cell after cell and is widened only after the sum (on the kinetic energy of a `64^3` TGV block such a sum is `2.6e-5` to `4.1e-5` off, that of a dense array `2e-8` or less). Four runs were lost to a timeout of the Slurm controller at the same moment (`srun: error: Unable to confirm allocation`): `strong9_np4_dual2_device`, `weak8_np8_dual4` and the 2-partial run with the tolerance on 16 and 32 GPUs; the last two were run again (`AD_PARTIALS=2 AD_LAPS=0 AD_MORE_PARTIALS= AD_DEVICE=0 sbatch -N 4 --time=00:20:00 mpi/jobs/jupiter_ad.sh "weak 8 16"`, 5 runs, and the same on 8 nodes), and the timings those jobs repeat agree with the first ones to 0.2 % between allocations (`Float32` 26.44 and 26.47 against 26.42 and 26.43 ms on 16 GPUs, 2 partials 47.10 against 47.05; 27.15 and 27.19 against 27.17 and 27.09, and 48.21 against 48.30, on 32).
+
+With the `Dual` arithmetic inlined (`--fastdual`, see [The cost of a partial](#the-cost-of-a-partial)). Jobs of 2026-11-25 (`3113571`, `3113572`, `3113578`, `3113580` and `3113581` on 1, 2, 4, 8 and 16 nodes, the second block of lines of "JUPITER jobs"; 93 runs, none lost; `data/mpi/jupiter_ad_<job>/` and the merged `data/mpi/jupiter_ad_fastdual.csv` in the JUPITER clone): the same WaterLily `43df5e6`, this repository at `02c7781`, everything else as above. The inlining comes from the script (`mpi/fastdual.jl`), not from WaterLily: WaterLily-jl/WaterLily.jl#408, which compiles the CUDA kernels over `Dual`s inlined inside WaterLily, was not run here (on a laptop GPU the two agree within 1 to 3 %). Runs "as it is" are the `*_plain` runs of the same jobs.
+
+One GPU, ms per step and `t(N)/t(0)`:
+
+| TGV | `Float32` | `N` = 1 | 2 | 3 | 4 | 8 |
+|---|---|---|---|---|---|---|
+| `128^3` | 4.37 | 5.10 (1.17) | 6.25 (1.43) | 6.87 (1.57) | 9.04 (2.07) | 20.37 (4.66) |
+| `128^3`, as it is | | | 6.85 (1.57) | | | 40.36 (9.24) |
+| `256^3` | 19.89 | 25.29 (1.27) | 35.46 (1.78) | 41.34 (2.08) | 57.80 (2.91) | 144.55 (7.27) |
+| `256^3`, as it is | | | 39.82 (2.00) | | | 297.09 (14.94) |
+| `512^3` | 140.82 | 187.99 (1.34) | 267.69 (1.90) | 323.84 (2.30) | | |
+
+The runs as they are reproduce the jobs of 2026-11-23 (`256^3`: 39.82 against 40.64 ms with 2 partials, 297.09 against 297.16 with 8). `cost_per_partial` at `256^3` is 0.27, 0.39, 0.36, 0.48 and 0.78 for 1, 2, 3, 4 and 8 partials (it was 0.39, 0.52, 0.46, 0.61 and 1.73), `cost_fit` 0.36 (0.47): 8 partials now cost less than the `1 + N` of 8 more solves, and the step still does not grow linearly in `N`.
+
+Weak scaling at `256^3` per GPU and strong scaling at `512^3`, ms per step with the parallel efficiency against the run on one GPU without MPI, inlined unless the row says otherwise:
+
+| GPUs | 1 | 4 | 8 | 16 | 32 | 64 |
+|---|---|---|---|---|---|---|
+| weak, `Float32` | 19.89 | 23.64 (0.841) | 24.33 (0.817) | 26.44 (0.752) | 27.17 (0.732) | 25.81 (0.770) |
+| weak, `N` = 1 | 25.29 | 29.40 (0.860) | 30.59 (0.827) | 32.63 (0.775) | 33.49 (0.755) | 32.27 (0.784) |
+| weak, `N` = 2 | 35.46 | 40.40 (0.878) | 41.81 (0.848) | 42.64 (0.832) | 44.01 (0.806) | 44.05 (0.805) |
+| weak, `N` = 2, as it is | 39.82 | 45.91 (0.867) | 47.00 (0.847) | 47.14 (0.845) | 49.27 (0.808) | 49.60 (0.803) |
+| weak, `N` = 3 | 41.34 | 46.91 (0.881) | 48.26 (0.857) | 49.55 (0.834) | 51.05 (0.810) | 50.30 (0.822) |
+| weak, `N` = 4 | 57.80 | 66.48 (0.869) | 68.14 (0.848) | 66.97 (0.863) | 70.02 (0.825) | 71.11 (0.813) |
+| weak, `N` = 8 | 144.55 | 163.06 (0.886) | 169.84 (0.851) | 168.40 (0.858) | 171.10 (0.845) | 172.47 (0.838) |
+| weak, `N` = 8, as it is | 297.09 | 319.56 (0.930) | 326.41 (0.910) | 327.72 (0.907) | 329.83 (0.901) | 327.84 (0.906) |
+| weak, `t(2)/t(0)` | 1.78 | 1.71 | 1.72 | 1.61 | 1.62 | 1.71 |
+| weak, `t(2)/t(0)`, as it is | 2.00 | 1.94 | 1.93 | 1.78 | 1.81 | 1.92 |
+| weak, `t(8)/t(0)` | 7.27 | 6.90 | 6.98 | 6.37 | 6.30 | 6.68 |
+| weak, `t(8)/t(0)`, as it is | 14.94 | 13.52 | 13.42 | 12.40 | 12.14 | 12.70 |
+| strong, `Float32` | 140.82 | 43.62 (0.807) | 24.27 (0.725) | 18.20 (0.484) | 13.33 (0.330) | 8.49 (0.260) |
+| strong, `N` = 1 | 187.99 | 55.61 (0.845) | 30.48 (0.771) | 21.71 (0.541) | 15.82 (0.371) | 10.28 (0.286) |
+| strong, `N` = 2 | 267.69 | 78.39 (0.854) | 41.53 (0.806) | 26.89 (0.622) | 18.93 (0.442) | 11.78 (0.355) |
+| strong, `N` = 3 | 323.84 | 89.96 (0.900) | 48.19 (0.840) | 30.12 (0.672) | 20.36 (0.497) | 12.80 (0.395) |
+| strong, `t(2)/t(0)` | 1.90 | 1.80 | 1.71 | 1.48 | 1.42 | 1.39 |
+
+The gain of the inlining does not depend on the GPU count: against the run as it is in the same job, the step with 2 partials is 9.5 to 12 % shorter on 1 to 64 GPUs and the step with 8 partials 47 to 51 % (`1024^3` with 8 partials on 64 GPUs: 172 ms per step against 328). The inlined runs scale as the others did: weak on 64 GPUs 80.5 % with 2 partials and 83.8 % with 8, against 77.0 % for `Float32`; the 8 partials as they are reach 90.6 % only because their extra time is computation. Against the 4 GPUs of one node the weak efficiency on 64 GPUs is 91.6 % for `Float32` and 91.1 %, 91.7 %, 93.3 %, 93.5 % and 94.5 % for 1, 2, 3, 4 and 8 partials. The milliseconds of this table and of the one of 2026-11-23 are not to be subtracted: the allocations differ (`Float32` on 64 GPUs 25.81 ms weak and 8.49 ms strong here, 28.18 and 11.13 then, and here less than on 16 and 32 GPUs), which is also why `t(2)/t(0)` as it is reads 1.92 on 64 GPUs here and 1.78 then with nearly the same 2-partial time (49.60 and 50.16 ms). No strong point was run as it is.
 
 ### One GPU on a laptop
 
