@@ -68,8 +68,8 @@ end
 # Reset a sim to its checkpoint (in-place load!) and remeasure the body; no-op for the transient (empty dir)
 reset_sim!(sim, fname, dir) = !isempty(dir) && (load!(sim.flow; fname, dir); measure!(sim))
 
-# AD runs: a checkpoint holds no derivatives, so after the warm-up ∂u/∂Re must be non-zero. It may have overflowed: with the
-# `quick` scheme it grows without bound in some cases (sphere, donut), and a step costs the same whatever the partials hold.
+# AD runs: a checkpoint holds no derivatives, so after the warm-up ∂u/∂Re must be non-zero. It may have overflowed: it grows
+# without bound in some cases (sphere, donut), and a step costs the same whatever the partials hold.
 function check_partials(sim, case, n)
     d = maximum(u -> abs(partials(u, 1)), Array(sim.flow.u))
     println("  log2p = $n: max|∂u/∂Re| = $d after the warm-up", isfinite(d) ? "" : " (overflowed, which does not change the time of a step)")

@@ -45,7 +45,7 @@ The runs of `benchmark.sh -ad` are rows of the same table, listed after the plai
 - The plots only show the rows with the partials of the baseline.
 - A baseline can also be an AD row, e.g. `--speedup_base="main,Float32+ad4"`: `Speedup` is then relative to that row, and each `Δ ± σ` still compares equal partials.
 
-`tgv` at `log2p = 7` on a laptop GPU, `main` against a branch that changes how the `Dual` kernels are compiled ([WaterLily.jl#408](https://github.com/WaterLily-jl/WaterLily.jl/pull/408)), from `./benchmark.sh -w "main dual-always-inline" -b CuArray -c tgv -ad "0 4 8" -r 3` and `--speedup_base=main`:
+`tgv` at `log2p = 7` on a laptop GPU, `main` against a branch that changes how the `Dual` kernels are compiled ([WaterLily.jl#408](https://github.com/WaterLily-jl/WaterLily.jl/pull/408)), from a sweep with `-b CuArray -ad "0 4 8" -r 3` and `compare.jl --speedup_base=main`:
 
 ```
 ▶ log2p = 7
