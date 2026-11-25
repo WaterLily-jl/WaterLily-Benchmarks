@@ -18,7 +18,7 @@ The runs use the CUDA environment, `gpu/CUDA`, which `profile.sh` makes again on
 | `-c`, `--cases` | none | cases to profile |
 | `-p`, `--log2p` | none | sizes, one entry per case; comma-separated sizes are profiled one by one with `ncu` |
 | `-s`, `--max_steps` | `1000` | time steps |
-| `-ft`, `--float_type` | `Float32` | float type |
+| `-ft`, `--float_type` | `Float32` | float type, or `<ftype>+ad<N>` for [forward-mode AD](@ref "Forward-mode AD") |
 | `-k`, `--kernels` | none | kernels to profile with `ncu`, e.g. `"327 355"` |
 | `-b`, `--backends` | `CuArray` | backend |
 | `-v`, `--versions` | the `julia` on the `PATH` | Julia version |

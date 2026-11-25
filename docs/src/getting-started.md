@@ -34,11 +34,11 @@ On a laptop, or any machine whose clock speed changes with temperature or power,
 ## Comparing WaterLily versions
 
 ```sh
-./benchmark.sh -w "master my-branch" -b Array -t "1 4" -r 3
-julia --project compare.jl --speedup_base=master
+./benchmark.sh -w "main my-branch" -b Array -t "1 4" -r 3
+julia --project compare.jl --speedup_base=main
 ```
 
-`-w` takes branches, tags or commit hashes, and `-b Array -t "1 4"` runs on the CPU with 1 and 4 threads. To also run on a GPU, add its backend to `-b`: `-b "Array CuArray"` for NVIDIA, `-b "Array ROCArray"` for AMD. The `Δ ± σ` and `Signif` columns compare each row with the `master` row of the same backend. See [Running benchmarks](benchmarks.md) for all the options of `benchmark.sh` and [Comparing results](compare.md) for `compare.jl`.
+`-w` takes branches, tags or commit hashes, and `-b Array -t "1 4"` runs on the CPU with 1 and 4 threads. To also run on a GPU, add its backend to `-b`: `-b "Array CuArray"` for NVIDIA, `-b "Array ROCArray"` for AMD. The `Δ ± σ` and `Signif` columns compare each row with the `main` row of the same backend. See [Running benchmarks](benchmarks.md) for all the options of `benchmark.sh` and [Comparing results](compare.md) for `compare.jl`.
 
 ## Plotting
 

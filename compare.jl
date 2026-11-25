@@ -82,6 +82,10 @@ function join_sizes(benchmarks, reps)
     return joined
 end
 benchmarks_all = join_sizes(benchmarks_all, repetitions)
+# AD runs (benchmark.sh -ad, FP "<float type>+ad<N>") after the plain ones, in file order otherwise: the default
+# baseline, and one given without its partials, is then a plain row
+row_partials(b) = split_fp(b.tags[end-3])[2]
+sort!(benchmarks_all; by=row_partials, alg=MergeSort)
 # Scatter of the run means: their std within a process. The runs of a process share its machine state,
 # so with repetitions take the std of the per-process minima, with the within-process std as a floor.
 function scatter(rmeans, reps)
@@ -180,11 +184,16 @@ for (i, case) in enumerate(cases)
             for (name, v) in row; data[i, col(name)] = v; end
             versions_key = (waterlily_ref, benchmark.tags[end], benchmark.tags[end-3])
             backend_idx = findall(x -> x == backends_str[i], unique(backends_str))[1]
-            plotting_data[k, backend_idx, :] .= (data[i, col("Mean")], data[i, col("Cost")], data[i, col("Speedup")])
+            row_partials(benchmark) == row_partials(benchmarks[speedup_base_idx]) && # plots: the partials of the baseline only
+                (plotting_data[k, backend_idx, :] .= (data[i, col("Mean")], data[i, col("Cost")], data[i, col("Speedup")]))
         end
         for i in axes(data, 1)
+            # Reference row: the backend and partials of the row, the WaterLily ref, Julia version and float type of the
+            # baseline. Δ then compares versions at equal partials, and Speedup carries the cost of the partials.
+            ref_versions = copy(data[speedup_base_idx, version_cols])
+            ref_versions[end] = fp_label(split_fp(ref_versions[end])[1], split_fp(data[i, col("FP")])[2])
             ref_idx = findfirst(j -> data[j, col("Backend")] == data[i, col("Backend")] &&
-                                     data[j, version_cols] == data[speedup_base_idx, version_cols], axes(data, 1))
+                                     data[j, version_cols] == ref_versions, axes(data, 1))
             if !isnothing(ref_idx) && i != ref_idx
                 ref_cost = Float64(data[ref_idx, col("Cost")])
                 data[i, col("Δ ± σ")] = (Float64(data[i, col("Cost")]) - ref_cost) / ref_cost * 100
@@ -194,16 +203,18 @@ for (i, case) in enumerate(cases)
                 data[i, col("Single")] = data[i, col("Reps")] == 1 || data[ref_idx, col("Reps")] == 1
             end
         end
-        # Rows sorted by --sort, else by backend and WaterLily; the baseline row is followed through the sort
+        # Rows sorted by --sort, else by backend, partials and WaterLily; the baseline row is followed through the sort
+        partials_col = [split_fp(fp)[2] for fp in data[:, col("FP")]]
         sorted_idx = 0 < sort_idx <= length(header_top) ? sortperm(data[:, sort_idx]) :
-                     sortperm(collect(zip(data[:, col("Backend")], data[:, col("WaterLily")])))
+                     sortperm(collect(zip(data[:, col("Backend")], partials_col, data[:, col("WaterLily")])))
         data .= data[sorted_idx, :]
         base_row = findfirst(==(speedup_base_idx), sorted_idx)
-        # Highlight the speedup baseline row (blue, bold in markdown) and the fastest row of each backend (green, italic)
+        # Highlight the speedup baseline row (blue, bold in markdown) and the fastest row of each backend and
+        # number of partials (green, italic)
         is_base = (data, i, j) -> i == base_row
         is_fastest = Function[]
-        for bkend in unique(backends_str)
-            idxs = findall(x->x[col("Backend")]==bkend,eachrow(data))
+        for group in unique(zip(backends_str, partials_col))
+            idxs = findall(x -> (x[col("Backend")], split_fp(x[col("FP")])[2]) == group, eachrow(data))
             min_indx = idxs[argmin(data[idxs,col("Mean")])]
             push!(is_fastest, (data, i, j) -> i == min_indx)
         end

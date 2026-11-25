@@ -28,7 +28,7 @@ features:
     details: compare.jl reports the cost difference between refs with its scatter and significance, merging repeated runs in separate processes.
     link: /methodology
   - title: Pull-request benchmarks
-    details: A maintainer comments /benchmark on a WaterLily.jl pull request and gets the comparison with master as a comment.
+    details: A maintainer comments /benchmark on a WaterLily.jl pull request and gets the comparison with main as a comment.
     link: /pull-requests
   - title: CPU and GPU
     details: Serial (SIMD) and multithreaded CPU runs, and NVIDIA (CUDA) and AMD (ROCm) GPUs, each in its own environment.
@@ -41,12 +41,12 @@ features:
 
 ## Quick start
 
-With a clone of [WaterLily.jl](https://github.com/WaterLily-jl/WaterLily.jl) in `$WATERLILY_DIR`, compare a branch with `master` on the CPU:
+With a clone of [WaterLily.jl](https://github.com/WaterLily-jl/WaterLily.jl) in `$WATERLILY_DIR`, compare a branch with `main` on the CPU:
 
 ```sh
 git clone https://github.com/WaterLily-jl/WaterLily-Benchmarks && cd WaterLily-Benchmarks
-./benchmark.sh -w "master my-branch" -b Array -t "1 4" -r 3
-julia --project compare.jl --speedup_base=master
+./benchmark.sh -w "main my-branch" -b Array -t "1 4" -r 3
+julia --project compare.jl --speedup_base=main
 ```
 
-`-b Array -t "1 4"` runs on the CPU with 1 and 4 threads. To also run on a GPU, add its backend to `-b`: `-b "Array CuArray"` for NVIDIA, `-b "Array ROCArray"` for AMD. `compare.jl` prints one table per case and size, with the time per step, the speedup, and the difference of each row against `master` on the same backend with its significance. See [Getting started](getting-started.md) for the requirements and [Methodology](methodology.md) for what the columns mean.
+`-b Array -t "1 4"` runs on the CPU with 1 and 4 threads. To also run on a GPU, add its backend to `-b`: `-b "Array CuArray"` for NVIDIA, `-b "Array ROCArray"` for AMD. `compare.jl` prints one table per case and size, with the time per step, the speedup, and the difference of each row against `main` on the same backend with its significance. See [Getting started](getting-started.md) for the requirements and [Methodology](methodology.md) for what the columns mean.

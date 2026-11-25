@@ -3,7 +3,7 @@
 [`benchmark.sh`](https://github.com/WaterLily-jl/WaterLily-Benchmarks/blob/main/benchmark.sh) runs every combination of Julia versions, WaterLily refs, backends and thread counts it is given. Each combination runs in a new Julia process that times all the requested cases and sizes and writes one JSON file per case. Nothing is shared between the processes but the files.
 
 ```sh
-./benchmark.sh -v "release 1.11" -w "master my-branch" -b "Array CuArray" -t "1 4" \
+./benchmark.sh -v "release 1.11" -w "main my-branch" -b "Array CuArray" -t "1 4" \
                -c "tgv jelly-biotsavart" -p "6,7 5,6" -s 25 -ft Float32
 ```
 
@@ -23,7 +23,7 @@ Lists are space-separated and quoted. When an option is given twice, the last va
 | `-c`, `--cases` | `"tgv jelly-biotsavart"` | cases, see [Cases and checkpoints](cases.md) |
 | `-p`, `--log2p` | per case | sizes of each case, comma-separated, e.g. `"6,7 5,6"` |
 | `-s`, `--max_steps` | `25` | time steps per run |
-| `-ft`, `--float_type` | `Float32` | `Float32` or `Float64` |
+| `-ft`, `--float_type` | `Float32` | `Float32` or `Float64`, or `<ftype>+ad<N>` for [Forward-mode AD](@ref) |
 | `-dev`, `--developed` | `checkpoints` | directory of the developed-flow checkpoints; `""` times the startup transient instead |
 | `-r`, `--repeats` | `1` | repetitions of the whole sweep, see [Repetitions](@ref) |
 | `-u`, `--update` | `false` | update the environment before each run, see [Updating the environment](@ref) |
@@ -47,6 +47,19 @@ Each run starts from a checkpoint of a developed flow, `checkpoints/<case>_<log2
 ## Backends and threads
 
 `Array` runs on the CPU once per thread count in `-t`. With 1 thread it uses WaterLily's SIMD backend (labelled `CPUx01`), and with more threads its KernelAbstractions backend (`CPUx04`, ...). `CuArray` and `ROCArray` run on the GPU (`GPU-NVIDIA`, `GPU-AMD`) in their own environments, which `benchmark.sh` makes on their first run; see [Environments](environments.md). `benchmark.sh` writes the backend preference of each run into `LocalPreferences.toml`, so do not edit that file.
+
+## Forward-mode AD
+
+A float type `<ftype>+ad<N>`, e.g. `-ft Float32+ad4`, times its case with [ForwardDiff](https://github.com/JuliaDiff/ForwardDiff.jl) `Dual` numbers over `<ftype>` with `N` partials, as in a simulation differentiated in forward mode. The same label is the float type of the run in the file names and in the `FP` column of [`compare.jl`](compare.md). As any `-ft` value it is given once for all cases or once per case, so repeat a case to time several numbers of partials:
+
+```sh
+./benchmark.sh -w "main my-branch" -b CuArray -c "tgv tgv tgv" -ft "Float32 Float32+ad4 Float32+ad8" -r 3
+```
+
+- The Reynolds number carries the first partial and the other partials are zero, which costs the same as `N` independent inputs.
+- The runs start from the plain checkpoints. After the warm-up `benchmark.jl` prints `max|∂u/∂Re|` and stops if it is zero. In `sphere` and `donut` it overflows with the `quick` scheme ([WaterLily.jl#358](https://github.com/WaterLily-jl/WaterLily.jl/issues/358)), which does not change the time of a step.
+- The Biot-Savart cases do not run with `Dual` numbers: keep them plain (`-ft "Float32+ad4 Float32"`) or leave them out with `-c`.
+- On the CPU the `Dual` loops are not vectorised (the first partial costs about 11 `Float32` steps on one thread), so use small sizes and few steps there, or a GPU. The memory is `N + 1` times that of the plain run.
 
 ## Updating the environment
 
