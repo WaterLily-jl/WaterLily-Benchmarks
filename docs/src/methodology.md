@@ -14,7 +14,7 @@ The minimum of the run medians is still shown, as `Median`. It describes the typ
 
 ## Table columns
 
-An example table from a comparison of WaterLily releases (`jelly-biotsavart` at `log2p = 5`, master as speedup baseline, 3 repetitions):
+An example table from a comparison of WaterLily releases (`jelly-biotsavart` at `log2p = 5`, main as speedup baseline, 3 repetitions):
 
 ```
 ▶ log2p = 5
@@ -22,15 +22,15 @@ An example table from a comparison of WaterLily releases (`jelly-biotsavart` at 
 │  Backend   │ WaterLily │ Julia  │   FP    │ Alloc │  Mean  │ Median │    Cost     │ Speedup │ Noise │    Δ ± σ     │ Signif  │ Reps │
 │            │           │        │         │  [k]  │  [ms]  │  [ms]  │ [ns/DOF/dt] │         │  [%]  │     [%]      │ [|Δ|/σ] │      │
 ├────────────┼───────────┼────────┼─────────┼───────┼────────┼────────┼─────────────┼─────────┼───────┼──────────────┼─────────┼──────┤
-│     CPUx01 │    master │ 1.11.5 │ Float32 │   0.7 │ 157.99 │ 165.25 │     1205.41 │    1.00 │   0.4 │            - │       - │    3 │
+│     CPUx01 │      main │ 1.11.5 │ Float32 │   0.7 │ 157.99 │ 165.25 │     1205.41 │    1.00 │   0.4 │            - │       - │    3 │
 │     CPUx01 │    v1.6.1 │ 1.11.5 │ Float32 │   0.8 │ 159.65 │ 143.64 │     1218.04 │    0.99 │   0.6 │  +1.0 ±  0.7 │    1.5  │    3 │
 │     CPUx01 │    v1.7.0 │ 1.11.5 │ Float32 │   0.8 │ 160.19 │ 144.18 │     1222.13 │    0.99 │   0.5 │  +1.4 ±  0.6 │    2.2  │    3 │
 │     CPUx01 │    v1.8.0 │ 1.11.5 │ Float32 │   0.8 │ 161.27 │ 168.63 │     1230.37 │    0.98 │   0.5 │  +2.1 ±  0.7 │    3.1  │    3 │
-│     CPUx04 │    master │ 1.11.5 │ Float32 │  33.2 │  56.61 │  57.74 │      431.90 │    2.79 │   1.6 │            - │       - │    3 │
+│     CPUx04 │      main │ 1.11.5 │ Float32 │  33.2 │  56.61 │  57.74 │      431.90 │    2.79 │   1.6 │            - │       - │    3 │
 │     CPUx04 │    v1.6.1 │ 1.11.5 │ Float32 │  51.6 │  63.00 │  57.98 │      480.61 │    2.51 │   1.2 │ +11.3 ±  2.0 │    5.7  │    3 │
 │     CPUx04 │    v1.7.0 │ 1.11.5 │ Float32 │  53.6 │  64.39 │  59.71 │      491.28 │    2.45 │   1.1 │ +13.7 ±  1.9 │    7.2  │    3 │
 │     CPUx04 │    v1.8.0 │ 1.11.5 │ Float32 │  62.3 │  65.31 │  66.21 │      498.29 │    2.42 │   1.5 │ +15.4 ±  2.2 │    7.0  │    3 │
-│ GPU-NVIDIA │    master │ 1.11.5 │ Float32 │  36.0 │   7.67 │   7.80 │       58.55 │   20.59 │   5.6 │            - │       - │    3 │
+│ GPU-NVIDIA │      main │ 1.11.5 │ Float32 │  36.0 │   7.67 │   7.80 │       58.55 │   20.59 │   5.6 │            - │       - │    3 │
 │ GPU-NVIDIA │    v1.6.1 │ 1.11.5 │ Float32 │  31.9 │   7.81 │   7.25 │       59.61 │   20.22 │   1.4 │  +1.8 ±  5.8 │    0.3  │    3 │
 │ GPU-NVIDIA │    v1.7.0 │ 1.11.5 │ Float32 │  34.0 │   7.44 │   6.77 │       56.76 │   21.24 │   4.6 │  -3.1 ±  7.3 │    0.4  │    3 │
 │ GPU-NVIDIA │    v1.8.0 │ 1.11.5 │ Float32 │  42.6 │   8.29 │   8.37 │       63.26 │   19.05 │   4.5 │  +8.1 ±  7.2 │    1.1  │    3 │
@@ -44,7 +44,7 @@ An example table from a comparison of WaterLily releases (`jelly-biotsavart` at 
 - **Cost [ns/DOF/dt]**: `Mean` divided by the number of cells, i.e. the cost per cell and per time step.
 - **Speedup**: `Mean(speedup_base) / Mean`. The speedup baseline is a single row for the whole table, the first one by default (set it with `--speedup_base`), so it also compares across backends.
 - **Noise [%]**: scatter of the row's measurement relative to `Mean` (one standard deviation), i.e. how much `Mean` changes from run to run and from process to process, see below.
-- **Δ ± σ [%]**: cost difference against the *reference row*, which is the row of the same backend matching the speedup baseline's `(WaterLily ref, Julia, FP)`, e.g. the master row of that backend when comparing master against a PR. The reference row itself prints `-`. Positive means slower. σ is the scatter of Δ, `σ = sqrt(Noise_row² + Noise_ref²)`, because Δ is the difference of two noisy rows.
+- **Δ ± σ [%]**: cost difference against the *reference row*, which is the row of the same backend matching the speedup baseline's `(WaterLily ref, Julia, FP)`, e.g. the main row of that backend when comparing main against a PR. The reference row itself prints `-`. Positive means slower. σ is the scatter of Δ, `σ = sqrt(Noise_row² + Noise_ref²)`, because Δ is the difference of two noisy rows.
 - **Signif [|Δ|/σ]**: significance of Δ (it is not Δ divided by the row's own `Noise`). Below about 1 the Δ is indistinguishable from scatter; believe it from about 2 to 3. A `*` marks a value where the row or its reference row has `Reps = 1`: σ then only covers the scatter within a process.
 - **Reps**: number of repetitions (separate processes) merged into the row, see [Repetitions](@ref).
 

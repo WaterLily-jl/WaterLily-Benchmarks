@@ -8,7 +8,7 @@ inputs:
     default: ${{ github.workspace }}
   base:
     description: Reference ref, the Δ ± σ reference row of each backend.
-    default: master
+    default: main
   head:
     description: Ref compared with base, e.g. pr-123.
     required: true
