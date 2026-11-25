@@ -153,7 +153,7 @@ runs:
           echo "<details><summary>Reading the table</summary>"
           echo
           echo "**Mean** is the time per step: the minimum over runs of the mean step of each run. **Δ ± σ** is the cost" \
-               "difference with the ${names[0]} row of the same backend, positive is slower, and **Signif** = |Δ|/σ: below 1 it is" \
+               "difference with the ${names[0]} row of the same backend (and partials, for AD runs), positive is slower, and **Signif** = |Δ|/σ: below 1 it is" \
                "scatter, from 2 to 3 believe it. **Noise** is the scatter of the row and **Reps** the separate processes merged" \
                "into it. **Alloc** is only meaningful on CPUx01 (SIMD). The bold row is the speedup baseline, the italic one" \
                "the fastest of its backend. See the [methodology](https://waterlily-jl.github.io/WaterLily-Benchmarks/dev/methodology)."

@@ -24,6 +24,7 @@ Lists are space-separated and quoted. When an option is given twice, the last va
 | `-p`, `--log2p` | per case | sizes of each case, comma-separated, e.g. `"6,7 5,6"` |
 | `-s`, `--max_steps` | `25` | time steps per run |
 | `-ft`, `--float_type` | `Float32` | `Float32` or `Float64` |
+| `-ad`, `--partials` | `0` | partials of the `ForwardDiff.Dual` numbers of the runs, e.g. `"0 4 8"`, see [Forward-mode AD](@ref) |
 | `-dev`, `--developed` | `checkpoints` | directory of the developed-flow checkpoints; `""` times the startup transient instead |
 | `-r`, `--repeats` | `1` | repetitions of the whole sweep, see [Repetitions](@ref) |
 | `-u`, `--update` | `false` | update the environment before each run, see [Updating the environment](@ref) |
@@ -48,6 +49,25 @@ Each run starts from a checkpoint of a developed flow, `checkpoints/<case>_<log2
 
 `Array` runs on the CPU once per thread count in `-t`. With 1 thread it uses WaterLily's SIMD backend (labelled `CPUx01`), and with more threads its KernelAbstractions backend (`CPUx04`, ...). `CuArray` and `ROCArray` run on the GPU (`GPU-NVIDIA`, `GPU-AMD`) in their own environments, which `benchmark.sh` makes on their first run; see [Environments](environments.md). `benchmark.sh` writes the backend preference of each run into `LocalPreferences.toml`, so do not edit that file.
 
+## Forward-mode AD
+
+`-ad "0 4 8"` (or `--partials`) also times every case with [ForwardDiff](https://github.com/JuliaDiff/ForwardDiff.jl) `Dual` numbers, as in a simulation differentiated in forward mode: each value of the list is a new process whose arrays hold `Dual`s over the float type of `-ft` with that many partials, and `0` is the plain run. It measures what a derivative costs on each backend, and what a WaterLily change does to that cost:
+
+```sh
+./benchmark.sh -w "main my-branch" -b CuArray -c "tgv sphere" -ad "0 4 8" -r 3
+julia --project compare.jl --speedup_base=main
+```
+
+- The Reynolds number of the case is the differentiated input: it carries the first partial, and the other partials are zero. `Dual` arithmetic does the same work whether a partial is zero or not, so the time is that of `N` independent inputs.
+- The runs start from the same checkpoints as the plain ones, values only. After the warm-up `benchmark.jl` prints `max|∂u/∂Re|` and stops if it is zero, so a timed run always carries a derivative. In `sphere` and `donut` that derivative grows without bound, about 2.5 times per step, and overflows within 150 steps: the derivative of WaterLily's `quick` limiter is unstable there (it stays bounded in `tgv` and `cylinder`). The values and the pressure solver do not see the partials, and a step takes the same time whether they are finite or not, so the timings hold; the derivative of those two cases is not a physical sensitivity.
+- The pressure solver stops on the residual of the values, so an AD run takes the V-cycles of the plain run, and the time ratio is the cost of the `Dual` arithmetic.
+- The float type of an AD run is written `<ftype>+ad<N>`, e.g. `Float32+ad4`, in the file names and in the `FP` column of `compare.jl`, where the AD runs are rows of their own, see [Comparing results](compare.md). Without `-ad` (or with `-ad 0`), the files and tables are those of a plain run.
+- The Biot-Savart cases cannot run: BiotSavartBCs.jl updates its residual with an atomic `+=`, which does not take `Dual` numbers, so `-ad` with a `-biotsavart` case stops with an error before anything runs. `jelly-biotsavart` is a default case, so give the cases with `-c`.
+- AD runs are slow on the CPU, where the `Dual` loops are not vectorised: for `tgv` at `log2p = 6` the first partial alone costs 11 `Float32` steps on one thread and 8 on four, and each process warms up for at least 50 steps. Use small sizes and few steps there (`-p`, `-s`), or a GPU, where a partial costs about one `Float32` step (on a laptop GPU, 5 steps with 4 partials and 10 to 15 with 8). The memory is `N + 1` times that of the plain run.
+- A laptop that has been idle runs its first processes faster, and the first processes of a sweep are those of the first ref. With AD runs, which take minutes, this can be 10 to 20 % of a step: use `-r 3`, read `Signif`, and when the first repetition stands out compare the others, e.g. `julia --project compare.jl data/benchmark/*/*_r[23].json`.
+
+`Dual` comes from WaterLily's own ForwardDiff, so the environments need no extra package.
+
 ## Updating the environment
 
 With `-u true`, each run first develops WaterLily from `$WATERLILY_DIR` into the benchmark environment and updates the other packages (`Pkg.develop` and `Pkg.update`). A new clone does not need it: an environment without a `Manifest.toml` is installed on its first run (`Pkg.develop` only). Use it when the Julia version changes or when the WaterLily refs being compared have different dependencies. Without it, the environment stays as it is: WaterLily is developed from a path, so checking out another ref with `-w` is enough to run that code.
@@ -68,7 +88,7 @@ Each process writes one JSON file per case into `<data_dir>/<hostname>_<WaterLil
 <case>_<log2p>_<max_steps>_<ftype>_<backend>_<WaterLily hash>_<Julia version>[_r<n>].json
 ```
 
-where `<log2p>` joins the sizes, e.g. `tgv_67_25_Float32_CPUx04_50cb584_1.11.5.json` for `log2p = 6,7`. A run with `-bs` uses `<WaterLily hash>+bs<BiotSavartBCs hash>` instead of the WaterLily hash. The files hold `BenchmarkTools` results whose tags describe the run, and `compare.jl` reads the tags, not the file names, so renaming a file is safe for `compare.jl` (but see `environments.toml` below).
+where `<log2p>` joins the sizes, e.g. `tgv_67_25_Float32_CPUx04_50cb584_1.11.5.json` for `log2p = 6,7`. An AD run has `<ftype>+ad<N>` as its float type, e.g. `tgv_67_25_Float32+ad4_CPUx04_50cb584_1.11.5.json` (see [Forward-mode AD](@ref)). A run with `-bs` uses `<WaterLily hash>+bs<BiotSavartBCs hash>` instead of the WaterLily hash. The files hold `BenchmarkTools` results whose tags describe the run, and `compare.jl` reads the tags, not the file names, so renaming a file is safe for `compare.jl` (but see `environments.toml` below).
 
 Each data directory also keeps the environment of its runs, so that they can be reproduced:
 

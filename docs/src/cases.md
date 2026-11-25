@@ -1,6 +1,6 @@
 # Cases and checkpoints
 
-Each case is a function in [`src/cases.jl`](https://github.com/WaterLily-jl/WaterLily-Benchmarks/blob/main/src/cases.jl) that returns a WaterLily `Simulation` for a size `log2p`, a backend and a float type. The `-biotsavart` cases use the open boundaries of [BiotSavartBCs.jl](https://github.com/WaterLily-jl/BiotSavartBCs.jl) instead of WaterLily's default ones, and solve the pressure Poisson equation through its `mom_project!` (see [BiotSavartBCs changes](biotsavart.md)).
+Each case is a function in [`src/cases.jl`](https://github.com/WaterLily-jl/WaterLily-Benchmarks/blob/main/src/cases.jl) that returns a WaterLily `Simulation` for a size `log2p`, a backend and a value type `T`: a float type, or a `ForwardDiff.Dual` over it for the [AD runs](@ref "Forward-mode AD") of `benchmark.sh -ad`. The `-biotsavart` cases use the open boundaries of [BiotSavartBCs.jl](https://github.com/WaterLily-jl/BiotSavartBCs.jl) instead of WaterLily's default ones, and solve the pressure Poisson equation through its `mom_project!` (see [BiotSavartBCs changes](biotsavart.md)).
 
 | Case | Flow | Grid (cells), `n = 2^log2p` | Default `-p` | Checkpoints |
 |---|---|---|---|---|
@@ -45,11 +45,11 @@ julia --project visualize.jl --cases='["sphere"]' --log2p='[(5,)]'
 julia --project=gpu/CUDA develop.jl --backend=CuArray        # on an NVIDIA GPU
 ```
 
-Both take `--cases`, `--log2p` and `--ftype` as Julia lists, and `--data_dir` for the checkpoint directory (default `checkpoints/`).
+Both take `--cases`, `--log2p` and `--ftype` as Julia lists, and `--data_dir` for the checkpoint directory (default `checkpoints/`). AD runs have no checkpoints of their own: they load the values of these ones, with zero partials.
 
 ## Adding a case
 
-1. Add a function to `src/cases.jl` that returns the `Simulation`, named as the case with `-` replaced by `_` (the case `tgv-periodic` is the function `tgv_periodic`).
+1. Add a function to `src/cases.jl` that returns the `Simulation`, named as the case with `-` replaced by `_` (the case `tgv-periodic` is the function `tgv_periodic`). Take the value type as the keyword `T` and use the Reynolds number as `seed(Re, T)`, which makes it the differentiated input of an AD run (and is `Re` itself otherwise).
 2. In `src/util.jl`, add the case to `all_cases`, and give it entries in `tests_dets` (the domain shape in units of `2^log2p`, for the cost per cell, and the plot title), `develop_time` and `checkpoint_log2p`. If the body moves, add it to `remeasure_case`.
 3. Add the same default sizes to `DEF_LOG2P` at the top of `benchmark.sh`.
 4. Make the checkpoints with `julia --project develop.jl --cases='["<case>"]'`, check them with `visualize.jl`, and commit them (git-LFS) with their images.
