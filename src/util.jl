@@ -15,6 +15,29 @@ parsestringlist(x) = filter(!isempty, occursin(',',x) ? split(x,',') : split(x,'
 checkpoint_name(case, p, ft) = "$(case)_$(p)_$(ft).jld2"
 remeasure_case(case) = case in ("cylinder", "cylinder-biotsavart", "jelly-biotsavart")  # moving bodies
 
+# Forward-mode AD runs (benchmark.sh -ft <ftype>+ad<N>): `--partials=[N1,N2,...]` gives the partials of each case (one number:
+# of all cases) and the float type of the tags and file names gets the `+ad<N>` suffix, which keeps them apart from the plain
+# runs. `--partials=` is matched exactly, since `iarg` also finds the word inside other values.
+function partials_arg(args, ncases=1)
+    i = findfirst(startswith("--partials="), args)
+    isnothing(i) && return fill(0, ncases)
+    N = [parse(Int, m.match) for m in eachmatch(r"-?\d+", split(args[i], "="; limit=2)[2])]
+    length(N) == 1 && (N = fill(N[1], ncases))
+    (length(N) == ncases && all(>=(0), N)) || error("--partials takes the partials of each of the $ncases case(s), 0 or more: got '$(args[i])'")
+    return N
+end
+fp_label(ft, N) = N == 0 ? ft : "$(ft)+ad$(N)"
+function split_fp(label)  # "Float32+ad4" -> ("Float32", 4)
+    m = match(r"^(.*)\+ad(\d+)$", string(label))
+    return isnothing(m) ? (string(label), 0) : (String(m[1]), parse(Int, m[2]))
+end
+# BiotSavartBCs updates its residual with an atomic `+=` (`_biotBC!`), and atomics do not take Dual numbers
+function check_ad_cases(cases, N)
+    bad = [c for (c, n) in zip(cases, N) if n > 0 && endswith(c, "-biotsavart")]
+    isempty(bad) || error("AD runs do not support the Biot-Savart cases ($(join(bad, ", "))): BiotSavartBCs does not run " *
+        "with ForwardDiff.Dual numbers. Give them a plain float type, or pick other cases.")
+end
+
 function parse_cla(args; cases=["tgv"], log2p=[(6,7)], max_steps=[100], ftype=[Float32], backend=Array, data_dir="data/")
     cases = !isnothing(iarg("cases", args)) ? arg_value("cases", args) |> metaparse : cases
     log2p = !isnothing(iarg("log2p", args)) ? arg_value("log2p", args) |> metaparse : log2p
@@ -48,6 +71,14 @@ end
 # Reset a sim to its checkpoint (in-place load!) and remeasure the body; no-op for the transient (empty dir)
 reset_sim!(sim, fname, dir) = !isempty(dir) && (load!(sim.flow; fname, dir); measure!(sim))
 
+# AD runs: a checkpoint holds no derivatives, so after the warm-up ∂u/∂Re must be non-zero. It may have overflowed: with `quick`
+# it grows without bound in sphere and donut (WaterLily.jl#358), and a step costs the same whatever the partials hold.
+function check_partials(sim, case, n)
+    d = maximum(u -> abs(partials(u, 1)), Array(sim.flow.u))
+    println("  log2p = $n: max|∂u/∂Re| = $d after the warm-up", isfinite(d) ? "" : " (overflowed, which does not change the time of a step)")
+    d == 0 && error("The AD run of '$case' (log2p=$n) carries no derivative with respect to Re: is `Re` seeded in the case (`seed` in src/cases.jl)?")
+end
+
 # Allocations per step averaged over `s` steps: a single step is not representative when the
 # number of V-cycles varies from step to step (e.g. jelly-biotsavart). Deterministic, so one pass is enough.
 function block_alloc_count(sim, ft, s, remeasure)
@@ -58,18 +89,19 @@ function block_alloc_count(sim, ft, s, remeasure)
     Base.gc_alloc_count(Base.GC_Diff(Base.gc_num(), g0)) ÷ s
 end
 
-function add_to_suite!(suite, sim_function; case="", p=(3,4,5), s=100, ft=Float32, backend=Array, bstr="CPU", remeasure=false, developed="", resets=nothing, allocs=nothing)
+function add_to_suite!(suite, sim_function; case="", p=(3,4,5), s=100, ft=Float32, backend=Array, bstr="CPU", remeasure=false, developed="", resets=nothing, allocs=nothing, npartials=0)
     suite[bstr] = BenchmarkGroup([bstr])
     for n in p
         # A missing checkpoint is an error, raised before the warm-up
         ckpt = isempty(developed) ? "" : joinpath(developed, checkpoint_name(case, n, ft))
         !isempty(ckpt) && !isfile(ckpt) && error("No developed-flow checkpoint at '$ckpt'. Generate it first " *
             "with `julia --project=. develop.jl` (case=$case, log2p=$n), or pass --developed=\"\" to time the startup transient.")
-        sim = sim_function(n, backend; T=ft)
+        sim = sim_function(n, backend; T=value_type(ft, npartials))  # `ft` stays the float type of checkpoints and end times
         KA_backend = KernelAbstractions.get_backend(sim.flow.p)
         fname = checkpoint_name(case, n, ft)
         reset_sim!(sim, fname, developed)        # warm up from the developed flow (if any)
         warmup!(sim, ft, remeasure, KA_backend)  # JIT and settle the device clocks
+        npartials > 0 && check_partials(sim, case, n)
         isnothing(allocs) || (allocs[repr(n)] = block_alloc_count(sim, ft, s, remeasure))
         isnothing(resets) || push!(resets, (sim=sim, fname=fname, dir=developed))
         suite[bstr][repr(n)] = BenchmarkGroup([repr(n)])
@@ -215,6 +247,7 @@ checkpoint_log2p = Dict(
 
 # CLA of develop.jl and visualize.jl: all cases at their checkpoint sizes in Float32, unless ARGS say otherwise
 function parse_checkpoint_cla(args)
+    any(>(0), partials_arg(args)) && error("Checkpoints hold values only: AD runs (--partials) start from the plain ones, so leave --partials out here.")
     cases = parse_cla(args; cases=all_cases)[1]
     return parse_cla(args; cases, log2p=[checkpoint_log2p[c] for c in cases], ftype=fill(Float32, length(cases)),
                      backend=Array, data_dir="checkpoints/")

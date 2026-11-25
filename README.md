@@ -36,7 +36,7 @@ julia --project compare.jl --speedup_base=main
 The [documentation](https://waterlily-jl.github.io/WaterLily-Benchmarks/dev/) covers:
 
 - [Getting started](https://waterlily-jl.github.io/WaterLily-Benchmarks/dev/getting-started): requirements, installation and a first benchmark.
-- [Running benchmarks](https://waterlily-jl.github.io/WaterLily-Benchmarks/dev/benchmarks): the options of `benchmark.sh`, repetitions, the machine check and the output files.
+- [Running benchmarks](https://waterlily-jl.github.io/WaterLily-Benchmarks/dev/benchmarks): the options of `benchmark.sh`, forward-mode AD runs, repetitions, the machine check and the output files.
 - [Comparing results](https://waterlily-jl.github.io/WaterLily-Benchmarks/dev/compare): `compare.jl`, the speedup baseline, sorting and plots.
 - [Cases and checkpoints](https://waterlily-jl.github.io/WaterLily-Benchmarks/dev/cases): the test cases, the developed-flow checkpoints and how to add a case.
 - [Pull-request benchmarks](https://waterlily-jl.github.io/WaterLily-Benchmarks/dev/pull-requests): `/benchmark` on WaterLily.jl pull requests and the GitHub Action behind it.

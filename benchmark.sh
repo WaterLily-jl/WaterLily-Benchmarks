@@ -182,7 +182,7 @@ display_info () {
     echo " - Cases:         ${CASES[@]}
  - Size:          ${LOG2P[@]:0:$NCASES}
  - Sim. steps:    ${MAXSTEPS[@]:0:$NCASES}
- - Data type:     ${FTYPE[@]:0:$NCASES}
+ - Data type:     ${FTYPE_IN[@]:0:$NCASES}
  - Developed:     ${DEVELOPED:-(transient)}
  - Update env:    $UPDATE
  - Repeats:       $REPEATS"
@@ -315,6 +315,21 @@ done
 expand -p  "$dP"  "${LOG2P[@]}";    LOG2P=("${R[@]}")
 expand -s  "$dS"  "${MAXSTEPS[@]}"; MAXSTEPS=("${R[@]}")
 expand -ft "$dFT" "${FTYPE[@]}";    FTYPE=("${R[@]}")
+
+# A float type "<ftype>+ad<N>" is a forward-mode AD run of its case: ForwardDiff.Dual numbers over <ftype> with N partials.
+# FTYPE keeps the float types and PARTIALS the partials (0 = plain floats). The Biot-Savart cases are refused:
+# BiotSavartBCs does not run with Dual numbers (the atomic update of the residual in its `_biotBC!`).
+FTYPE_IN=("${FTYPE[@]}"); PARTIALS=(); AD=false
+for ((i=0; i<NCASES; i++)); do
+    if [[ ${FTYPE[$i]} =~ ^([A-Za-z0-9]+)\+ad([1-9][0-9]*)$ ]]; then
+        FTYPE[$i]=${BASH_REMATCH[1]}; PARTIALS+=("${BASH_REMATCH[2]}"); AD=true
+        [[ ${CASES[$i]} == *-biotsavart ]] && { echo "ERROR: -ft ${FTYPE_IN[$i]} cannot run '${CASES[$i]}': BiotSavartBCs does not support ForwardDiff.Dual numbers. Give that case a plain float type, e.g. -c \"tgv ${CASES[$i]}\" -ft \"${FTYPE_IN[$i]} Float32\"." >&2; exit 1; }
+    elif [[ ${FTYPE[$i]} == *+* ]]; then
+        echo "ERROR: Invalid value '${FTYPE[$i]}' for --float_type/-ft (an AD run is <ftype>+ad<N> with N >= 1, e.g. Float32+ad4)" >&2; exit 1
+    else
+        PARTIALS+=(0)
+    fi
+done
 fetch_checkpoints  # only the checkpoints of this sweep, if they are git-LFS pointers
 
 # Check WATERLILY_DIR is set and functional
@@ -383,6 +398,7 @@ MAXSTEPS=$(join_array_comma "${MAXSTEPS[*]}")
 FTYPE=$(join_array_comma "${FTYPE[*]}")
 args_cases="--cases=$CASES --log2p=$LOG2P --max_steps=$MAXSTEPS --ftype=$FTYPE --data_dir=$DATA_DIR"
 args_cases="$args_cases --developed=$DEVELOPED"  # always forwarded, so -dev "" reaches src/benchmark.jl
+$AD && args_cases="$args_cases --partials=$(join_array_comma "${PARTIALS[*]}")"  # the partials of each case, only with AD runs
 
 # Benchmarks. With -r N the sweep runs N times in new processes, reversing the version order on even
 # repetitions, to sample a machine state that outlives a process. compare.jl merges the repetitions.

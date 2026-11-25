@@ -25,19 +25,20 @@ function collect_runs!(group, s, resets, allocs)
 end
 
 # Generate benchmarks
-function run_benchmarks(cases, log2p, max_steps, ftype, backend, bstr; data_dir="./", developed="", rep="")
-    for (case, p, s, ft) in zip(cases, log2p, max_steps, ftype)
-        println("Benchmarking: $(case)  ($(N_RUNS) runs × $(s) steps)")
+function run_benchmarks(cases, log2p, max_steps, ftype, backend, bstr; data_dir="./", developed="", rep="", npartials=fill(0, length(cases)))
+    for (case, p, s, ft, N) in zip(cases, log2p, max_steps, ftype, npartials)
+        println("Benchmarking: $(case)  ($(N_RUNS) runs × $(s) steps)", N > 0 ? ", $(ft) with $(N) partials" : "")
         suite = BenchmarkGroup()
-        results = BenchmarkGroup([case, "sim_step!", p, s, ft, bstr, run_hash, string(VERSION)])
+        fp = fp_label(ft, N)  # `ft`, or "<ft>+ad<N>" for an AD run
+        results = BenchmarkGroup([case, "sim_step!", p, s, fp, bstr, run_hash, string(VERSION)])
         resets = []                  # per-size (sim, fname, dir) to reset before each run
         allocs = Dict{String,Int}()  # per-size block-averaged allocations per step
         add_to_suite!(suite, getf(case); case=case, p=p, s=s, ft=ft, backend=backend, bstr=bstr,
-            remeasure = remeasure_case(case), developed=developed, resets=resets, allocs=allocs
+            remeasure = remeasure_case(case), developed=developed, resets=resets, allocs=allocs, npartials=N
         ) # create benchmark
         GC.gc()
         results[bstr] = collect_runs!(suite[bstr], s, resets, allocs) # run!
-        fname = "$(case)_$(p...)_$(s)_$(ft)_$(bstr)_$(run_hash)_$(VERSION)$(rep).json"
+        fname = "$(case)_$(p...)_$(s)_$(fp)_$(bstr)_$(run_hash)_$(VERSION)$(rep).json"
         BenchmarkTools.save(joinpath(data_dir,fname), results)
         save_environment(data_dir, fname)  # its Manifest and preferences, see util.jl
     end
@@ -53,6 +54,9 @@ developed = isnothing(_devi) ? "checkpoints" : split(ARGS[_devi], "="; limit=2)[
 # `--rep=<n>` (benchmark.sh -r): repetition index, appended to the file name
 _repi = findfirst(a -> startswith(a, "--rep="), ARGS)
 rep = isnothing(_repi) ? "" : "_r" * split(ARGS[_repi], "="; limit=2)[2]
+# `--partials=[N1,N2,...]` (benchmark.sh -ft <ftype>+ad<N>): the cases with N > 0 run with ForwardDiff.Dual numbers, see util.jl
+npartials = partials_arg(ARGS, length(cases))
+check_ad_cases(cases, npartials)
 
 # With -bs, benchmark.sh points BiotSavartBCs at a local clone: its commit joins the WaterLily one in the tags,
 # file names and data directory, so that runs which differ only in BiotSavartBCs stay apart (split_hash in util.jl)
@@ -62,4 +66,4 @@ run_hash = ispath(joinpath(bs_dir, ".git")) ? "$(git_hash)+bs$(short_hash(bs_dir
 # Generate benchmark data
 data_dir = joinpath(data_dir, hostname * "_" * run_hash)
 mkpath(data_dir)
-run_benchmarks(cases, log2p, max_steps, ftype, backend, backend_str[backend]; data_dir, developed, rep)
+run_benchmarks(cases, log2p, max_steps, ftype, backend, backend_str[backend]; data_dir, developed, rep, npartials)

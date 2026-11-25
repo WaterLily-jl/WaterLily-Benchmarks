@@ -13,7 +13,7 @@ inputs:
     description: Ref compared with base, e.g. pr-123.
     required: true
   args:
-    description: benchmark.sh arguments appended to the defaults `-b Array -t "1 2" -r 2` (a later value wins), restricted to [A-Za-z0-9 ,._="-].
+    description: benchmark.sh arguments appended to the defaults `-b Array -t "1 2" -r 2` (a later value wins), restricted to [A-Za-z0-9 ,._=+"-].
     default: ""
   force:
     description: Pass -f (skip the machine check), for shared runners.
@@ -99,7 +99,7 @@ runs:
         FORCE: ${{ inputs.force }}
       run: |
         read -r ARGS <<< "$ARGS"  # trim
-        [[ $ARGS =~ ^[A-Za-z0-9\ ,._=\"-]*$ ]] || { echo "::error::unexpected characters in args: $ARGS"; exit 1; }
+        [[ $ARGS =~ ^[A-Za-z0-9\ ,._=+\"-]*$ ]] || { echo "::error::unexpected characters in args: $ARGS"; exit 1; }
         DEFAULTS='-b Array -t "1 2" -r 2'  # CPU only, two thread counts, two repetitions; later values in ARGS win
         [[ $FORCE == true ]] && force=-f || force=
         echo "command=./benchmark.sh -w \"$BASE $HEAD\" -u true -dd data/ci $force $DEFAULTS $ARGS" >> "$GITHUB_OUTPUT"
@@ -153,7 +153,7 @@ runs:
           echo "<details><summary>Reading the table</summary>"
           echo
           echo "**Mean** is the time per step: the minimum over runs of the mean step of each run. **Δ ± σ** is the cost" \
-               "difference with the ${names[0]} row of the same backend, positive is slower, and **Signif** = |Δ|/σ: below 1 it is" \
+               "difference with the ${names[0]} row of the same backend (and partials, for AD runs), positive is slower, and **Signif** = |Δ|/σ: below 1 it is" \
                "scatter, from 2 to 3 believe it. **Noise** is the scatter of the row and **Reps** the separate processes merged" \
                "into it. **Alloc** is only meaningful on CPUx01 (SIMD). The bold row is the speedup baseline, the italic one" \
                "the fastest of its backend. See the [methodology](https://waterlily-jl.github.io/WaterLily-Benchmarks/dev/methodology)."

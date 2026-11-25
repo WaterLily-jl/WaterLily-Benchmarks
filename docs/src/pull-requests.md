@@ -9,6 +9,8 @@ A maintainer of [WaterLily.jl](https://github.com/WaterLily-jl/WaterLily.jl) can
 
 optionally followed by [`benchmark.sh` options](benchmarks.md) on the same line. The workflow fetches the pull request as the branch `pr-<number>`, runs both refs on a GitHub-hosted runner, and posts the `compare.jl` table as a comment, which later runs update. By default it runs the default cases on CPUx01 (SIMD) and CPUx02 (KernelAbstractions), in 2 repetitions. A hosted runner is noisy: read `Signif` before `Δ` (see [Methodology](methodology.md)). The reference is the tip of `main`, not the merge base.
 
+[Forward-mode AD](@ref) runs are slow on the CPU, so keep them small: `/benchmark -c "tgv tgv" -p 6 -s 10 -ft "Float32 Float32+ad2"`.
+
 `-w` and `-bs` replace the refs, the first run being the baseline: `/benchmark -w "pr-123 pr-123" -bs "main my-branch"` compares two BiotSavartBCs.jl branches on the pull request's WaterLily (see [BiotSavartBCs changes](biotsavart.md)). The workflow can also be started from the Actions tab of WaterLily.jl (`workflow_dispatch`), with the pull request number and the arguments.
 
 ## The action
@@ -19,7 +21,7 @@ optionally followed by [`benchmark.sh` options](benchmarks.md) on the same line.
 |---|---|---|
 | `waterlily-dir` | the workspace | WaterLily.jl checkout containing `base` and `head` |
 | `base`, `head` | `main`, (required) | refs to compare, e.g. `head: pr-123` |
-| `args` | none | `benchmark.sh` arguments appended to the defaults `-b Array -t "1 2" -r 2`, a later value winning, e.g. `-c sphere -r 3`; restricted to `[A-Za-z0-9 ,._="-]`. With `-bs`, BiotSavartBCs.jl is checked out next to WaterLily, so its refs must exist on GitHub |
+| `args` | none | `benchmark.sh` arguments appended to the defaults `-b Array -t "1 2" -r 2`, a later value winning, e.g. `-c sphere -r 3`; restricted to `[A-Za-z0-9 ,._=+"-]`. With `-bs`, BiotSavartBCs.jl is checked out next to WaterLily, so its refs must exist on GitHub |
 | `force` | `true` | pass `-f` (skip the machine check), for shared runners |
 | `julia-version` | `1`, the latest release | for `julia-actions/setup-julia` |
 | `harness-ref`, `harness-path` | the action's ref, `WaterLily-Benchmarks` | revision of this repository to run, and its checkout path |
