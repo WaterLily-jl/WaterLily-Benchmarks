@@ -30,7 +30,8 @@
 #   AD_MORE_PARTIALS  [4 8, none beyond 2 nodes]  more partials, timed once each at the weak points
 #   AD_DEVICE         [1, 0 beyond 2 nodes]       also time Float32 and the first of AD_PARTIALS with the halos passed
 #                                      device to device (WATERLILY_GPU_AWARE_MPI=1; the others are staged through host memory)
-#   AD_ARGS           []               more options of scaling.jl for every run
+#   AD_ARGS           []               more options of scaling.jl for every run (--fastdual: the Dual arithmetic inlined)
+#   AD_PLAIN          []               partials also timed without AD_ARGS at the weak points (runs named *_plain)
 #   RUN_MINUTES       [10]             the time limit of each run (srun --time), so that one that hangs does not
 #                                      take the rest of the job with it
 #   STEPS [100], WARMUP [20], WATERLILY_ENV [mpi]
@@ -49,10 +50,10 @@ elif [ "$N" -eq 1 ]; then POINTS=("weak 7 1" "weak 8 1 4" "strong 9 1 4")
 else POINTS=("weak 8 $NP" "strong 9 $NP"); fi
 few=$([ "$N" -le 2 ] && echo 1 || echo 0)
 PARTIALS="${AD_PARTIALS:-2 1 3}"; FIRST="${PARTIALS%% *}"; LAPS="${AD_LAPS:-1}"; DEVICE="${AD_DEVICE:-$few}"
-MORE="${AD_MORE_PARTIALS-$([ "$few" -eq 1 ] && echo "4 8")}"; TOL="${AD_TOL-2e-6}"
+MORE="${AD_MORE_PARTIALS-$([ "$few" -eq 1 ] && echo "4 8")}"; TOL="${AD_TOL-2e-6}"; PLAIN="${AD_PLAIN:-}"
 STEPS="${STEPS:-100}"; WARMUP="${WARMUP:-20}"; ENV_DIR="${WATERLILY_ENV:-mpi}"
 DIR="data/mpi/jupiter_ad_${SLURM_JOB_ID}"; mkdir -p "$DIR"
-echo "points: $(printf '"%s" ' "${POINTS[@]}"), partials: $PARTIALS, laps: $LAPS, tolerance: ${TOL:-none}, more partials: ${MORE:-none}, device to device: $DEVICE"
+echo "points: $(printf '"%s" ' "${POINTS[@]}"), partials: $PARTIALS, laps: $LAPS, tolerance: ${TOL:-none}, more partials: ${MORE:-none}, without AD_ARGS: ${PLAIN:-none}, device to device: $DEVICE"
 echo "$STEPS steps after $WARMUP${AD_ARGS:+, $AD_ARGS}, environment $ENV_DIR -> $DIR"
 # precompile on one rank, so that the runs do not all compile at once
 srun -N 1 -n 1 julia --project="$ENV_DIR" -e 'using Pkg; Pkg.precompile(); using CUDA, MPI, WaterLily
@@ -95,6 +96,7 @@ more () { # the pressure tolerance and more partials at the weak points, and dev
         run "${id}_dual${FIRST}_tol" "$3" "$FIRST" 0 $(opts "$1" "$2") --tol="$TOL"
     fi
     if [ "$1" = weak ]; then for n in $MORE; do run "${id}_dual${n}" "$3" "$n" 0 $(opts "$1" "$2"); done; fi
+    if [ "$1" = weak ]; then for n in $PLAIN; do AD_ARGS= run "${id}_dual${n}_plain" "$3" "$n" 0 $(opts "$1" "$2"); done; fi
     if [ "$DEVICE" = 1 ] && [ "$3" -gt 1 ]; then
         run "${id}_f32_device" "$3" 0 1 $(opts "$1" "$2")
         run "${id}_dual${FIRST}_device" "$3" "$FIRST" 1 $(opts "$1" "$2")

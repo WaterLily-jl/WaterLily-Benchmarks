@@ -5,14 +5,15 @@
 #
 # Everything comes from what the run printed (its header, the `Info:` line, `MEMORY` and, with --laps, `HALO`), not from
 # file names: the commits, the eltype and its partials, the ranks, the sizes, the time per step, the Poisson
-# iterations, the pressure tolerance when set (`tol`), the bytes per cell and the halo phases (ms per step). `job` is
+# iterations, the pressure tolerance when set (`tol`), the bytes per cell and the halo phases (ms per step). `fastdual`
+# is 1 for a run with partials and --fastdual (without partials the option changes nothing). `job` is
 # the Slurm job of a `# run=... job=...` line, which the job scripts write before each run. `ms_ratio` and `mem_ratio`
 # compare a run with the mean of the Float runs without partials of the same job, case, mode, sizes, ranks,
 # tolerance, transport and timers (`iters_differ` is 1 when their Poisson iterations are not those of the run, so that
 # the ratio also holds another amount of work); `cost_per_partial` is (t(N)/t(0) - 1)/N of the run, and `cost_fit` the
-# c of t(N)/t(0) = 1 + c N fitted to the runs of that point with up to 3 partials (c = 1: N more solves). `efficiency` is the parallel efficiency of a timed run against
+# c of t(N)/t(0) = 1 + c N fitted to the runs of that point and `fastdual` with up to 3 partials (c = 1: N more solves). `efficiency` is the parallel efficiency of a timed run against
 # the mean of the runs on the fewest ranks (`eff_ref_np`) of its curve among the files given: the same case, mode,
-# size (per rank for weak scaling, global for strong), eltype, partials, tolerance and transport, whatever the job.
+# size (per rank for weak scaling, global for strong), eltype, partials, `fastdual`, tolerance and transport, whatever the job.
 # --out writes the CSV to a file instead of the standard output, --table prints the main columns aligned.
 # Plain Julia, no packages.
 using Printf
@@ -21,12 +22,13 @@ const columns = (:file, :job, :waterlily, :benchmarks, :case, :mode, :launch, :n
     :steps, :ms_per_step, :mean_iters, :levels, :tol, :backend, :halo_backend, :gpu_aware, :laps, :halo_ms, :halo_calls,
     :wait_ms, :pack_ms, :post_ms, :work_ms, :wait_recv_ms, :unpack_ms, :wait_send_ms, :laps_sync, :arrays_B_per_cell,
     :halos_B_per_cell, :device_MB, :host_rss_MB, :ms_ratio, :mem_ratio, :iters_differ, :cost_per_partial, :cost_fit, :efficiency,
-    :eff_ref_np, :device, :mpi)
+    :eff_ref_np, :device, :mpi, :fastdual)
 keyvals(line) = Dict(String(m[1]) => String(m[2]) for m in eachmatch(r"(\w+)=([^\s,]+)", line))
 
 function runs(file)
-    out = Dict{Symbol,Any}[]; job = ""; r = Dict{Symbol,Any}()
-    done!() = (haskey(r, :ms_per_step) && push!(out, r); r = Dict{Symbol,Any}(:file => file, :job => job, :laps => 0))
+    out = Dict{Symbol,Any}[]; job = ""; r = Dict{Symbol,Any}(); fast = false
+    done!() = (haskey(r, :ms_per_step) && (r[:fastdual] = Int(fast && r[:partials] != "0"); push!(out, r)); fast = false;
+               r = Dict{Symbol,Any}(:file => file, :job => job, :laps => 0))
     for line in eachline(file)
         if startswith(line, "# run=")
             job = get(keyvals(line), "job", "")
@@ -40,6 +42,8 @@ function runs(file)
             kv = keyvals(line); r[:mpi] = strip(replace(m[1], "=" => "", "," => " "))
             r[:halo_backend] = get(kv, "halo", "igg")
             r[:gpu_aware] = get(kv, "WATERLILY_GPU_AWARE_MPI", get(kv, "IGG_CUDAAWARE_MPI", ""))
+        elseif startswith(line, "fast-math methods for Dual")
+            fast = true
         elseif startswith(line, "pressure solver:")
             r[:tol] = get(keyvals(replace(line, " = " => "=", ")" => "")), "tol", "")
         elseif (m = match(r"^  rank 0: (.*)", line)) !== nothing
@@ -76,8 +80,9 @@ function ratios!(rows)
         haskey(r, :arrays_B_per_cell) && all(b -> haskey(b, :arrays_B_per_cell), base) &&
             (r[:mem_ratio] = @sprintf("%.3f", num(r, :arrays_B_per_cell)/num(base[1], :arrays_B_per_cell)))
     end
-    for pt in unique(point.(rows))
-        duals = filter(r -> point(r) == pt && haskey(r, :ms_ratio), rows)
+    fitted(r) = (point(r), r[:fastdual])
+    for pt in unique(fitted.(rows))
+        duals = filter(r -> fitted(r) == pt && haskey(r, :ms_ratio), rows)
         foreach(r -> r[:cost_per_partial] = @sprintf("%.3f", (num(r, :ms_ratio) - 1)/num(r, :partials)), duals)
         few = filter(r -> num(r, :partials) <= 3, duals); isempty(few) && continue
         c = sum(r -> num(r, :partials)*(num(r, :ms_ratio) - 1), few)/sum(r -> num(r, :partials)^2, few)
@@ -86,7 +91,7 @@ function ratios!(rows)
 end
 # The parallel efficiency of the timed runs along each scaling curve
 function efficiency!(rows)
-    curve(r) = (map(c -> get(r, c, ""), (:case, :mode, :T, :partials, :tol, :backend))..., r[:mode] == "weak" ? r[:local] : r[:grid],
+    curve(r) = (map(c -> get(r, c, ""), (:case, :mode, :T, :partials, :fastdual, :tol, :backend))..., r[:mode] == "weak" ? r[:local] : r[:grid],
                 get(r, :gpu_aware, "") == "1")
     timed = filter(r -> r[:laps] == 0, rows)
     for cv in unique(curve.(timed))
@@ -107,11 +112,11 @@ rows = reduce(vcat, runs.(files); init=Dict{Symbol,Any}[])
 isempty(rows) && error("no run of mpi/scaling.jl in $(join(paths, ", "))")
 ratios!(rows); efficiency!(rows)
 sort!(rows, by=r -> (r[:job], r[:mode], r[:case], prod(parse.(Int, split(r[:local], "x"))), parse(Int, r[:np]), get(r, :tol, ""), get(r, :gpu_aware, ""), r[:laps],
-                     parse(Int, r[:partials]), r[:file]))
+                     parse(Int, r[:partials]), r[:fastdual], r[:file]))
 foreach(r -> r[:file] = basename(r[:file]), rows)
 
 if "--table" in ARGS
-    cols = (:file, :np, :partials, :grid, :local, :gpu_aware, :tol, :ms_per_step, :ms_ratio, :cost_per_partial, :cost_fit, :efficiency, :mean_iters, :halo_ms,
+    cols = (:file, :np, :partials, :fastdual, :grid, :local, :gpu_aware, :tol, :ms_per_step, :ms_ratio, :cost_per_partial, :cost_fit, :efficiency, :mean_iters, :halo_ms,
             :arrays_B_per_cell, :mem_ratio)
     w = [max(length(string(c)), maximum(r -> length(string(get(r, c, ""))), rows)) + 2 for c in cols]
     println(join(rpad.(string.(cols), w)))
