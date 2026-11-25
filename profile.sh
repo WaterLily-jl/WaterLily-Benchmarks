@@ -76,7 +76,7 @@ display_info () {
  - Cases:         ${CASES[@]}
  - Size:          ${LOG2P[@]:0:$NCASES}
  - Sim. steps:    $MAXSTEPS
- - Data type:     $FTYPE
+ - Data type:     $FTYPE_IN
  - File:          $FILE
  - Profiling:     ${NSIGHT[@]}
  - Kernels:       ${KERNELS[@]}"
@@ -167,6 +167,14 @@ esac
 shift
 done
 
+## A float type "<ftype>+ad<N>" profiles with ForwardDiff.Dual numbers over <ftype> with N partials (see benchmark.sh)
+FTYPE_IN=$FTYPE; PARTIALS=0
+if [[ $FTYPE =~ ^([A-Za-z0-9]+)\+ad([1-9][0-9]*)$ ]]; then
+    FTYPE=${BASH_REMATCH[1]}; PARTIALS=${BASH_REMATCH[2]}
+elif [[ $FTYPE == *+* ]]; then
+    echo "ERROR: Invalid value '$FTYPE' for --float_type/-ft (an AD run is <ftype>+ad<N> with N >= 1, e.g. Float32+ad4)" >&2; exit 1
+fi
+
 ## Assert all case arguments have equal size
 NCASES=${#CASES[@]}
 NLOG2P=${#LOG2P[@]}
@@ -220,6 +228,7 @@ update_environment
 
 ## Profiling
 args_cases="--backend=$BACKEND --max_steps=$MAXSTEPS --ftype=$FTYPE --data_dir=$DATA_DIR --plot_dir=$PLOT_DIR"
+(( PARTIALS > 0 )) && args_cases="$args_cases --partials=$PARTIALS"
 for ((i = 0; i < ${#CASES[@]}; ++i)); do
     case=${CASES[$i]}
     mkdir -p $DATA_DIR/$case

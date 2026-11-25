@@ -1,11 +1,11 @@
 name: Test the action
 
-# Runs action.yml against WaterLily.jl, master vs master~N, short sweep, no comment.
+# Runs action.yml against WaterLily.jl, main vs main~N, short sweep, no comment.
 on:
   workflow_dispatch:
     inputs:
       commits-back:
-        description: Compare master with master~N
+        description: Compare main with main~N
         default: "3"
         type: string
       args:
@@ -21,15 +21,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
-      - name: Check out WaterLily.jl master
+      - name: Check out WaterLily.jl main
         uses: actions/checkout@v7
         with:
           repository: WaterLily-jl/WaterLily.jl
-          ref: master
+          ref: main
           fetch-depth: 0
           persist-credentials: false
-      - name: Branch pr-test at master~${{ inputs.commits-back }}
-        run: git branch pr-test "master~${{ inputs.commits-back }}"
+      - name: Branch pr-test at main~${{ inputs.commits-back }}
+        run: git branch pr-test "main~${{ inputs.commits-back }}"
       - name: Check out this revision of the action
         uses: actions/checkout@v7
         with:

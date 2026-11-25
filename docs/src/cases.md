@@ -49,7 +49,7 @@ Both take `--cases`, `--log2p` and `--ftype` as Julia lists, and `--data_dir` fo
 
 ## Adding a case
 
-1. Add a function to `src/cases.jl` that returns the `Simulation`, named as the case with `-` replaced by `_` (the case `tgv-periodic` is the function `tgv_periodic`).
+1. Add a function to `src/cases.jl` that returns the `Simulation`, named as the case with `-` replaced by `_` (the case `tgv-periodic` is the function `tgv_periodic`). Use the Reynolds number as `seed(Re, T)`, the differentiated input of [AD runs](@ref "Forward-mode AD").
 2. In `src/util.jl`, add the case to `all_cases`, and give it entries in `tests_dets` (the domain shape in units of `2^log2p`, for the cost per cell, and the plot title), `develop_time` and `checkpoint_log2p`. If the body moves, add it to `remeasure_case`.
 3. Add the same default sizes to `DEF_LOG2P` at the top of `benchmark.sh`.
 4. Make the checkpoints with `julia --project develop.jl --cases='["<case>"]'`, check them with `visualize.jl`, and commit them (git-LFS) with their images.

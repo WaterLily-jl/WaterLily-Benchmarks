@@ -20,7 +20,7 @@ Files with identical tags are repetitions of one benchmark (`benchmark.sh -r`) a
 | Option | Default | Meaning |
 |---|---|---|
 | `--speedup_base=<values>` | the first row | the row that `Speedup` divides by and that sets the reference rows of `Δ ± σ`, see below |
-| `--sort=<column>` | file order | sort the rows by a column, given by (the start of) its name, case-insensitive, e.g. `Backend`, `Mean`, `Speedup`, `Signif`; a column index (1 to 14, counting the hidden `GC`) also works |
+| `--sort=<column>` | backend, partials, WaterLily ref | sort the rows by a column, given by (the start of) its name, case-insensitive, e.g. `Backend`, `Mean`, `Speedup`, `Signif`; a column index (1 to 14, counting the hidden `GC`) also works |
 | `--markdown` | off | print GitHub markdown tables, as posted on [pull requests](pull-requests.md) |
 | `--gc` | off | show the `GC [%]` column |
 | `--plot_dir=<dir>` | none | also save plots, see [Plots](@ref) |
@@ -30,12 +30,16 @@ In the text tables the speedup baseline row is blue and the fastest row of each 
 
 ## Speedup baseline
 
-`--speedup_base` takes comma-separated values that a single row must all match: a backend label (`CPUx04`, `GPU-NVIDIA`), a WaterLily ref or hash (`master`, `v1.8.0`, `50cb584`), a Julia version (`1.11.5`) or a float type (`Float32`), and for a [`-bs` run](biotsavart.md) a BiotSavartBCs ref or hash. The first matching row is the baseline, e.g. `--speedup_base="CPUx01,master"`. Matching is case-sensitive (`CPUx04`, not `cpux04`). If nothing matches, the error lists the rows that are available.
+`--speedup_base` takes comma-separated values that a single row must all match: a backend label (`CPUx04`, `GPU-NVIDIA`), a WaterLily ref or hash (`main`, `v1.8.0`, `50cb584`), a Julia version (`1.11.5`) or a float type (`Float32`, or `Float32+ad4` for an AD run), and for a [`-bs` run](biotsavart.md) a BiotSavartBCs ref or hash. The first matching row is the baseline, e.g. `--speedup_base="CPUx01,main"`. Matching is case-sensitive (`CPUx04`, not `cpux04`). If nothing matches, the error lists the rows that are available.
 
 - `Speedup` of every row is the baseline time divided by the row time, so it also compares backends.
-- `Δ ± σ` of a row compares it with its *reference row*: the row of the same backend with the WaterLily ref, Julia version and float type of the baseline. With `--speedup_base=master`, each backend is compared with its own `master` row.
+- `Δ ± σ` of a row compares it with its *reference row*: the row of the same backend with the WaterLily ref, Julia version and float type of the baseline. With `--speedup_base=main`, each backend is compared with its own `main` row.
 
 WaterLily refs are named from the clone in `$WATERLILY_DIR`: a local branch at that commit, else a tag, else a remote branch, else the hash. Point it to an up-to-date clone when reading results from another machine.
+
+## AD runs
+
+The [AD runs](@ref "Forward-mode AD") of `benchmark.sh` are rows of the same table, after the plain rows of their backend, with `FP = <ftype>+ad<N>`. `Speedup` stays relative to the baseline, a plain row by default, so its inverse is the cost of the partials. `Δ ± σ` compares an AD row with the baseline's ref at the same number of partials.
 
 ## Plots
 
